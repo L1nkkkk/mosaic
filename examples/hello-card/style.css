@@ -1,0 +1,35 @@
+.hello-card {
+  min-width: 0;
+  padding: 28px;
+  background: var(--white);
+  border: 1px solid var(--line);
+}
+
+.hello-card h2 {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.hello-card p {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Adapt to the card's allocated width, including editor previews. */
+@container (max-width: 360px) {
+  .hello-card { padding: 18px; }
+  .hello-card h2 { font-size: 18px; }
+}
+
+/* Height queries apply when the core provides a fixed-size frame. */
+@container (max-height: 220px) {
+  .hello-card { padding: 16px; }
+  .hello-card p { margin-top: 8px; line-height: 1.6; }
+}
