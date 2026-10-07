@@ -1,7 +1,7 @@
 import { escape, text } from '../../web/ui.js';
 import { bytes, duration, statusFrame, statusEditor } from '../status-ui.js';
 
-export const meta = { id: 'server-status', name: '服务器状态', version: 1, layout: 'half', privateOnly: true, description: '查看 CPU、内存、磁盘与运行时间，仅自己可见。', defaultData: { title: '服务器，运行得怎么样？' } };
+export const meta = { id: 'server-status', name: '服务器状态', version: 1, layout: { span: 6, minWidth: 300 }, privateOnly: true, description: '查看 CPU、内存、磁盘与运行时间，仅自己可见。', defaultData: { title: '服务器，运行得怎么样？' } };
 export function validate(data = {}) { return { title: text(data.title, 100, '标题') }; }
 export async function load({ request }) { return request('private/status'); }
 export const edit = statusEditor;

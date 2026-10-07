@@ -1,7 +1,7 @@
 import { escape, field, fields, text, safeLink } from '../../web/ui.js';
 
 export const meta = {
-  id: 'links', name: '连接清单', version: 1, description: '把作品、项目和常用入口放在一起。', layout: 'half',
+  id: 'links', name: '连接清单', version: 1, description: '把作品、项目和常用入口放在一起。', layout: { span: 6, minWidth: 280 },
   defaultData: { title: '在别处，继续探索。', items: [{ label: 'Mosaic · 项目与更新', url: 'https://github.com/L1nkkkk/mosaic' }, { label: 'Link · GitHub', url: 'https://github.com/L1nkkkk' }] },
 };
 export function validate(data = {}) {

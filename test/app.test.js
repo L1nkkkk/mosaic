@@ -245,3 +245,41 @@ test('legacy public modules remain public, and hidden saved drafts remain visibl
   assert.equal(owner.value.page.modules.length, original.draft.modules.length);
   assert.ok(owner.text.includes('UNPUBLISHED-PRIVATE-PREVIEW'));
 });
+
+test('width settings preserve draft/publish isolation, privacy, and content across replacement', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const beforePublic = (await f.request('/mosaic/api/page')).value.page;
+  const ids = state.draft.modules.map(item => item.id);
+  state.draft.modules.find(item => item.type === 'note').layout = { span: 4 };
+  state.draft.modules.find(item => item.type === 'server-status').layout = { span: 12 };
+  const expected = structuredClone(state.draft);
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  assert.deepEqual((await f.request('/mosaic/api/page')).value.page, beforePublic);
+  await f.restart();
+  assert.deepEqual((await f.request('/mosaic/api/private/page', { cookie })).value.page, expected);
+  await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
+  await f.restart();
+  const published = (await f.request('/mosaic/api/page')).value.page;
+  assert.deepEqual(published.modules.find(item => item.type === 'note').layout, { span: 4 });
+  assert.ok(!published.modules.some(item => item.type === 'server-status'));
+  state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  assert.deepEqual(state.draft.modules.map(item => item.id), ids);
+  delete state.draft.modules.find(item => item.type === 'note').layout;
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  assert.ok(!('layout' in state.draft.modules.find(item => item.type === 'note')));
+  assert.deepEqual((await f.request('/mosaic/api/modules')).value.modules.find(item => item.id === 'note').layout, { span: 6, minWidth: 280 });
+});
+
+test('invalid width settings are rejected without changing saved content', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  for (const layout of [null, 'wide', { span: -1 }, { span: 13 }, { span: '6' }, { span: 4, minWidth: 0 }, { aspectRatio: 1 }]) {
+    const page = structuredClone(state.draft);
+    page.modules[0].layout = layout;
+    assert.equal((await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page } })).status, 400);
+  }
+  assert.deepEqual((await f.request('/mosaic/api/admin/state', { cookie })).value, state);
+});

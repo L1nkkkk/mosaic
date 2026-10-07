@@ -1,4 +1,5 @@
 import { escape, field } from './ui.js';
+import { normalizeLayout, observeModuleLayout } from './layout.js';
 
 const app = document.querySelector('#app');
 const definitions = new Map();
@@ -10,6 +11,7 @@ let busy = false;
 let noticeTimer;
 let resourceTimer;
 let previewAudience = 'private';
+let stopLayout = () => {};
 const resources = new Map();
 const editing = /\/edit\/?$/.test(location.pathname);
 const privateArea = editing || /\/private\/?$/.test(location.pathname);
@@ -38,7 +40,7 @@ async function loadModules(privateAccess = false) {
   await Promise.all(catalog.map(async meta => {
     try {
       const module = await import(new URL(meta.entry, document.baseURI));
-      definitions.set(meta.id, module);
+      definitions.set(meta.id, { ...module, meta });
       if (!document.querySelector(`link[data-module-style="${meta.id}"]`)) {
         const style = document.createElement('link');
         style.rel = 'stylesheet'; style.href = new URL(`modules/${meta.id}/style.css`, document.baseURI); style.dataset.moduleStyle = meta.id;
@@ -73,20 +75,36 @@ function startRefresh(action) {
 }
 
 function renderPage(page, destination, audience = 'public') {
+  const scrollPositions = new Map([...destination.children].map(slot => [slot.dataset.moduleId, slot.querySelector('.module-content')?.scrollTop || 0]));
+  const focused = document.activeElement;
+  const focusedId = destination.contains(focused) && focused.matches('.module-content') ? focused.closest('.module-slot')?.dataset.moduleId : undefined;
+  stopLayout();
   destination.replaceChildren();
+  const slots = [];
   const visible = audience === 'private' ? page.modules : page.modules.filter(module => module.audience !== 'private' && module.visible !== false && !definitions.get(module.type)?.meta.privateOnly);
   if (!visible.length) destination.innerHTML = '<div class="empty-state"><h2>留白，也是一种开始。</h2><p>内容准备好后，会在这里与你见面。</p></div>';
   for (const item of visible) {
     const module = definitions.get(item.type);
     const slot = document.createElement('section');
-    slot.className = `module-slot ${module?.meta.layout === 'wide' ? 'wide' : 'half'}`;
+    slot.className = 'module-slot';
     slot.dataset.moduleId = item.id;
+    const layout = { ...normalizeLayout(module?.meta.layout), ...item.layout };
+    const frame = document.createElement('div'); frame.className = 'module-frame';
+    const content = document.createElement('div'); content.className = 'module-content';
+    if (layout.aspectRatio !== undefined) {
+      frame.classList.add('has-aspect-ratio');
+      frame.style.aspectRatio = String(layout.aspectRatio);
+      // A fixed frame can scroll when text is larger or longer than expected.
+      content.tabIndex = 0; content.setAttribute('role', 'region');
+      content.setAttribute('aria-label', `${module?.meta.name || '模块'}内容`);
+    }
     try {
       if (!module) throw new Error('Module unavailable');
-      slot.innerHTML = module.render(item.data, resources.get(item.type));
+      content.innerHTML = module.render(item.data, resources.get(item.type));
     } catch {
-      slot.innerHTML = '<article class="module-error"><h2>这块内容暂时无法显示</h2><p>内容已保留，其他模块仍可正常浏览。</p></article>';
+      content.innerHTML = '<article class="module-error"><h2>这块内容暂时无法显示</h2><p>内容已保留，其他模块仍可正常浏览。</p></article>';
     }
+    frame.append(content); slot.append(frame);
     if (audience === 'private') {
       slot.classList.add('with-badge');
       const badge = document.createElement('div'); badge.className = 'module-caption';
@@ -94,6 +112,12 @@ function renderPage(page, destination, audience = 'public') {
       slot.prepend(badge);
     }
     destination.append(slot);
+    slots.push({ element: slot, content, layout });
+  }
+  stopLayout = observeModuleLayout(destination, slots);
+  for (const { element, content } of slots) {
+    content.scrollTop = scrollPositions.get(element.dataset.moduleId) || 0;
+    if (element.dataset.moduleId === focusedId) content.focus({ preventScroll: true });
   }
 }
 
@@ -110,6 +134,7 @@ async function showPublic() {
 
 function showLogin() {
   clearInterval(resourceTimer);
+  stopLayout();
   document.title = '登录 · Mosaic';
   const destination = editing ? '编辑台' : '私人空间';
   app.innerHTML = `<div class="public-shell"><header class="site-header"><a class="brand" href="./">${logo}</a><a class="text-button" href="./">返回公开页 ↗</a></header><main id="main" class="login-main"><section class="login-card"><div class="eyebrow">YOUR PRIVATE WORKSPACE</div><h1>你的空间，只为你打开。</h1><p>登录后查看全部模块、服务器与 Bot 状态，也可以继续编辑你的展示页。</p><form id="login-form"><label class="field"><span>管理密码</span><input name="password" type="password" autocomplete="current-password" required maxlength="256" placeholder="输入管理密码"></label><p id="login-error" class="inline-error" role="alert"></p><button class="button primary" type="submit">进入${destination} <span aria-hidden="true">→</span></button></form><div class="login-caption"><span class="dot"></span> Public 对外展示，Private 仅自己可见。</div></section><div class="login-art" aria-hidden="true"><img src="web/mark.svg" alt=""><span>A LITTLE SPACE<br>JUST FOR YOU.</span></div></main>${footer()}</div>`;
@@ -198,6 +223,14 @@ function renderFields() {
   audienceSelect.onchange = () => { item.audience = audienceSelect.value; item.visible = item.audience === 'public'; setDirty(); renderModuleList(); renderFields(); updatePreview(); };
   container.append(audienceField);
   const scopeHelp = document.createElement('p'); scopeHelp.className = 'scope-help'; scopeHelp.textContent = module?.meta.privateOnly ? '此模块固定为 Private，无法公开。' : '改成 Private 并保存后立即撤下公开内容。改成 Public 后还需要发布。'; container.append(scopeHelp);
+  const widthField = document.createElement('label'); widthField.className = 'field';
+  widthField.innerHTML = '<span>模块宽度</span><select aria-label="模块宽度"><option value="">跟随模块推荐</option><option value="3">四分之一行</option><option value="4">三分之一行</option><option value="6">半行</option><option value="8">三分之二行</option><option value="12">整行</option></select>';
+  const widthSelect = widthField.querySelector('select');
+  if (item.layout?.span && ![3, 4, 6, 8, 12].includes(item.layout.span)) widthSelect.add(new Option(`${item.layout.span} / 12 列`, String(item.layout.span)));
+  widthSelect.value = item.layout?.span ? String(item.layout.span) : '';
+  widthSelect.onchange = () => { if (widthSelect.value) item.layout = { span: Number(widthSelect.value) }; else delete item.layout; setDirty(); updatePreview(); };
+  const widthHelp = document.createElement('p'); widthHelp.className = 'scope-help'; widthHelp.textContent = '空间不足时会自动加宽、换行；模块顺序保持不变。';
+  container.append(widthField, widthHelp);
   if (module) {
     try {
       container.append(module.edit({ data: item.data, change(next, refresh = false) {

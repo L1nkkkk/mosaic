@@ -168,22 +168,48 @@ svg,img {
 .page-grid {
   display:grid;
   grid-template-columns:repeat(12,minmax(0,1fr));
-  gap:22px
+  gap:22px;
+  min-width:0
 }
 .module-slot {
   min-width:0;
-  container-type:inline-size
+  container-type:inline-size;
+  grid-column:1/-1;
+  display:flex;
+  flex-direction:column;
+  gap:10px
 }
-.module-slot.wide {
-  grid-column:1/-1
-}
-.module-slot.half {
-  grid-column:span 6
-}
-.module-slot>article {
-  height:100%;
+.module-frame {
+  min-width:0;
+  flex:1;
+  display:flex;
   border-radius:14px;
   overflow:hidden
+}
+.module-content {
+  min-width:0;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  overflow-wrap:anywhere
+}
+.module-content>article {
+  min-width:0;
+  flex:1
+}
+.module-frame.has-aspect-ratio {
+  position:relative;
+  flex:none;
+  width:100%
+}
+.has-aspect-ratio>.module-content {
+  position:absolute;
+  inset:0;
+  overflow:auto;
+  overscroll-behavior:contain
+}
+.module-content img, .module-content video, .module-content canvas, .module-content svg {
+  max-width:100%
 }
 .dot {
   width:7px;
@@ -593,9 +619,6 @@ svg,img {
 .preview .page-grid {
   gap:14px
 }
-.preview.narrow .module-slot {
-  grid-column:1/-1
-}
 .preview-topline {
   display:flex;
   align-items:center;
@@ -716,9 +739,6 @@ dialog::backdrop {
   .preview-toolbar span {
     display:none
   }
-  .preview .module-slot {
-    grid-column:1/-1
-  }
   .preview {
     padding:17px
   }
@@ -758,9 +778,6 @@ dialog::backdrop {
   }
   .page-grid {
     gap:16px
-  }
-  .module-slot.half {
-    grid-column:1/-1
   }
   .site-footer {
     align-items:flex-start;
@@ -846,8 +863,6 @@ dialog::backdrop {
 .private-heading p { color:#87907d; font-size:12px; line-height:1.9; }
 .private-heading>button { flex-shrink:0; }
 .private-summary { display:flex; justify-content:space-between; gap:15px; font-size:10px; color:#89937f; margin:25px 0; padding:14px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
-.module-slot.with-badge { display:flex; flex-direction:column; gap:10px; }
-.module-slot.with-badge>article { height:auto; flex:1; }
 .module-caption { display:flex; align-items:center; gap:10px; min-height:22px; }
 .audience-badge { font-size:9px; line-height:1.5; padding:4px 9px; border-radius:5px; }
 .audience-badge.private { background:#e6e8f6; color:#707bad; }

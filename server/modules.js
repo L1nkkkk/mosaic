@@ -1,6 +1,7 @@
 import { readdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { normalizeLayout, normalizeLayoutOverride } from '../web/layout.js';
 
 export async function loadModules(directory) {
   const registry = new Map();
@@ -11,7 +12,10 @@ export async function loadModules(directory) {
       throw new Error(`Invalid module contract: ${entry.name}`);
     }
     module.validate(structuredClone(module.meta.defaultData));
-    registry.set(entry.name, module);
+    let layout;
+    try { layout = normalizeLayout(module.meta.layout); }
+    catch (error) { throw new Error(`Invalid module layout (${entry.name}): ${error.message}`); }
+    registry.set(entry.name, { ...module, meta: { ...module.meta, layout } });
   }
   if (!registry.size) throw new Error('At least one module is required');
   return registry;
@@ -30,8 +34,9 @@ export function validatePage(input, registry) {
     const audience = item.audience ?? (module.meta.privateOnly ? 'private' : 'public');
     if (!['public', 'private'].includes(audience)) throw new Error('请选择 Public 或 Private。');
     if (module.meta.privateOnly && audience !== 'private') throw new Error(`${module.meta.name}只能在私人页显示。`);
+    const layout = normalizeLayoutOverride(item.layout);
     // Keep the legacy flag restrictive so older readers cannot expose private data.
-    return { id: item.id, type: item.type, audience, visible: audience === 'public' && item.visible !== false, data: module.validate(item.data) };
+    return { id: item.id, type: item.type, audience, visible: audience === 'public' && item.visible !== false, ...(layout ? { layout } : {}), data: module.validate(item.data) };
   });
   return { title: input.title.trim(), modules };
 }
