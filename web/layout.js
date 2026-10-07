@@ -18,13 +18,20 @@ export function normalizeLayout(input = 'half') {
   return { span, minWidth, ...(aspectRatio === undefined ? {} : { aspectRatio }) };
 }
 
-// An instance may change its preferred width, never its module's constraints.
+// An instance chooses its outer frame; the module still owns its internal layout.
 export function normalizeLayoutOverride(input) {
   if (input === undefined) return undefined;
-  if (!objectWithKeys(input, ['span'])) throw new Error('页面模块尺寸只允许设置占列数。');
-  if (input.span === undefined) return undefined;
-  if (!validSpan(input.span)) throw new Error('模块占列数必须是 1 到 12 的整数。');
-  return { span: input.span };
+  if (!objectWithKeys(input, ['span', 'height'])) throw new Error('页面模块尺寸只允许设置占列数和高度。');
+  if (input.span !== undefined && !validSpan(input.span)) throw new Error('模块占列数必须是 1 到 12 的整数。');
+  if (input.height !== undefined && (!Number.isInteger(input.height) || input.height < 120 || input.height > 1600)) throw new Error('模块高度必须是 120 到 1600 的整数像素。');
+  const result = { ...(input.span === undefined ? {} : { span: input.span }), ...(input.height === undefined ? {} : { height: input.height }) };
+  return Object.keys(result).length ? result : undefined;
+}
+
+export function sizeModuleFrame(frame, layout, height) {
+  frame.classList.toggle('has-fixed-size', height !== undefined || layout.aspectRatio !== undefined);
+  frame.style.height = height === undefined ? '' : `${height}px`;
+  frame.style.aspectRatio = height === undefined && layout.aspectRatio !== undefined ? String(layout.aspectRatio) : '';
 }
 
 export function resolveLayoutSpan(layout, width, gap = 0) {
@@ -40,6 +47,7 @@ export function observeModuleLayout(grid, slots) {
   const update = width => {
     const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
     for (const { element, layout } of slots) {
+      if (element.classList.contains('is-resizing')) continue;
       const span = String(resolveLayoutSpan(layout, width, gap));
       if (element.dataset.span !== span) {
         element.dataset.span = span;

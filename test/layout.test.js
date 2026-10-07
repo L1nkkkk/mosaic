@@ -41,11 +41,13 @@ test('responsive widths stay within the grid and respect minimum widths when spa
   }
 });
 
-test('instance width overrides cannot change module constraints or inject style text', () => {
+test('instance frame overrides validate height and cannot change minimum width or inject style text', () => {
   assert.equal(normalizeLayoutOverride(undefined), undefined);
   assert.equal(normalizeLayoutOverride({}), undefined);
   assert.deepEqual(normalizeLayoutOverride({ span: 4 }), { span: 4 });
-  for (const value of [null, [], 'half', { span: 0 }, { span: 13 }, { span: 1.5 }, { span: '6; color:red' }, { minWidth: 0 }, { span: 4, aspectRatio: 1 }]) assert.throws(() => normalizeLayoutOverride(value));
+  assert.deepEqual(normalizeLayoutOverride({ height: 320 }), { height: 320 });
+  assert.deepEqual(normalizeLayoutOverride({ span: 4, height: 320 }), { span: 4, height: 320 });
+  for (const value of [null, [], 'half', { span: 0 }, { span: 13 }, { span: 1.5 }, { span: '6; color:red' }, { minWidth: 0 }, { span: 4, aspectRatio: 1 }, { height: 0 }, { height: 1601 }, { height: 200.5 }, { height: '300px' }, { height: null }]) assert.throws(() => normalizeLayoutOverride(value));
   const requested = { ...normalizeLayout({ span: 6, minWidth: 300 }), ...normalizeLayoutOverride({ span: 3 }) };
   assert.equal(resolveLayoutSpan(requested, 900, 22), 6);
 });

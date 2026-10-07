@@ -1,5 +1,6 @@
 import { escape, field } from './ui.js';
-import { normalizeLayout, observeModuleLayout } from './layout.js';
+import { normalizeLayout, normalizeLayoutOverride, observeModuleLayout, sizeModuleFrame } from './layout.js';
+import { attachLayoutEditor, reorderModules } from './arrange.js';
 
 const app = document.querySelector('#app');
 const definitions = new Map();
@@ -12,6 +13,7 @@ let noticeTimer;
 let resourceTimer;
 let previewAudience = 'private';
 let stopLayout = () => {};
+let layoutEditor;
 const resources = new Map();
 const editing = /\/edit\/?$/.test(location.pathname);
 const privateArea = editing || /\/private\/?$/.test(location.pathname);
@@ -77,7 +79,8 @@ function startRefresh(action) {
 function renderPage(page, destination, audience = 'public') {
   const scrollPositions = new Map([...destination.children].map(slot => [slot.dataset.moduleId, slot.querySelector('.module-content')?.scrollTop || 0]));
   const focused = document.activeElement;
-  const focusedId = destination.contains(focused) && focused.matches('.module-content') ? focused.closest('.module-slot')?.dataset.moduleId : undefined;
+  const focusedId = destination.contains(focused) && focused.matches('.module-content,[data-layout-action]') ? focused.closest('.module-slot')?.dataset.moduleId : undefined;
+  const focusedAction = focused?.dataset.layoutAction;
   stopLayout();
   destination.replaceChildren();
   const slots = [];
@@ -88,12 +91,11 @@ function renderPage(page, destination, audience = 'public') {
     const slot = document.createElement('section');
     slot.className = 'module-slot';
     slot.dataset.moduleId = item.id;
-    const layout = { ...normalizeLayout(module?.meta.layout), ...item.layout };
+    const layout = { ...normalizeLayout(module?.meta.layout), ...(item.layout?.span === undefined ? {} : { span: item.layout.span }) };
     const frame = document.createElement('div'); frame.className = 'module-frame';
     const content = document.createElement('div'); content.className = 'module-content';
-    if (layout.aspectRatio !== undefined) {
-      frame.classList.add('has-aspect-ratio');
-      frame.style.aspectRatio = String(layout.aspectRatio);
+    sizeModuleFrame(frame, layout, item.layout?.height);
+    if (layout.aspectRatio !== undefined || item.layout?.height !== undefined) {
       // A fixed frame can scroll when text is larger or longer than expected.
       content.tabIndex = 0; content.setAttribute('role', 'region');
       content.setAttribute('aria-label', `${module?.meta.name || '模块'}内容`);
@@ -105,11 +107,21 @@ function renderPage(page, destination, audience = 'public') {
       content.innerHTML = '<article class="module-error"><h2>这块内容暂时无法显示</h2><p>内容已保留，其他模块仍可正常浏览。</p></article>';
     }
     frame.append(content); slot.append(frame);
+    if (editing && destination.id === 'preview-page') {
+      slot.classList.add('editable-module');
+      slot.classList.toggle('selected', selected === item.id);
+      const bar = document.createElement('div'); bar.className = 'module-editbar';
+      bar.innerHTML = `<button type="button" class="layout-drag" data-layout-action="move" data-label="${escape(module?.meta.name || '模块')}" aria-label="拖动排序 ${escape(module?.meta.name || '模块')}" aria-describedby="layout-help"><span aria-hidden="true">⠿</span><span>${escape(module?.meta.name || '模块')}</span></button><span class="layout-size">${layout.span}/12 · ${item.layout?.height === undefined ? '自动高度' : item.layout.height + 'px'}</span>`;
+      slot.prepend(bar);
+      const resize = document.createElement('button'); resize.type = 'button'; resize.className = 'layout-resize'; resize.dataset.layoutAction = 'resize';
+      resize.setAttribute('aria-label', `调整${module?.meta.name || '模块'}大小`); resize.setAttribute('aria-describedby', 'layout-help'); resize.innerHTML = '<span aria-hidden="true">↘</span>';
+      frame.append(resize);
+    }
     if (audience === 'private') {
       slot.classList.add('with-badge');
       const badge = document.createElement('div'); badge.className = 'module-caption';
       badge.innerHTML = `<span class="audience-badge ${item.audience === 'private' ? 'private' : 'public'}">${item.audience === 'private' ? 'Private · 仅自己' : 'Public · 公开模块'}</span>${item.audience !== 'private' && item.visible === false ? '<span class="hidden-caption">暂不公开展示</span>' : ''}`;
-      slot.prepend(badge);
+      slot.insertBefore(badge, frame);
     }
     destination.append(slot);
     slots.push({ element: slot, content, layout });
@@ -117,7 +129,7 @@ function renderPage(page, destination, audience = 'public') {
   stopLayout = observeModuleLayout(destination, slots);
   for (const { element, content } of slots) {
     content.scrollTop = scrollPositions.get(element.dataset.moduleId) || 0;
-    if (element.dataset.moduleId === focusedId) content.focus({ preventScroll: true });
+    if (element.dataset.moduleId === focusedId) (focusedAction ? element.querySelector(`[data-layout-action="${focusedAction}"]`) : content)?.focus({ preventScroll: true });
   }
 }
 
@@ -134,6 +146,7 @@ async function showPublic() {
 
 function showLogin() {
   clearInterval(resourceTimer);
+  layoutEditor?.destroy(); layoutEditor = undefined;
   stopLayout();
   document.title = '登录 · Mosaic';
   const destination = editing ? '编辑台' : '私人空间';
@@ -179,7 +192,32 @@ async function showPrivate() {
 }
 
 function setDirty() { dirty = true; document.querySelector('#save-status').textContent = '有未保存的改动'; }
-function updatePreview() { renderPage(state.draft, document.querySelector('#preview-page'), previewAudience); }
+function updatePreview() { if (!layoutEditor?.active) renderPage(state.draft, document.querySelector('#preview-page'), previewAudience); }
+
+function selectModule(id) {
+  selected = id; renderModuleList(); renderFields();
+  for (const slot of document.querySelectorAll('#preview-page>.module-slot')) slot.classList.toggle('selected', slot.dataset.moduleId === id);
+}
+
+function finishArrange(change) {
+  let message = '';
+  if (change?.kind === 'move') {
+    const modules = reorderModules(state.draft.modules, change.id, change.targetId, change.after);
+    if (modules !== state.draft.modules) {
+      state.draft.modules = modules; selected = change.id; setDirty();
+      message = `模块已移到第 ${modules.findIndex(item => item.id === change.id) + 1} 位。`;
+    }
+  } else if (change?.kind === 'resize') {
+    const item = state.draft.modules.find(item => item.id === change.id);
+    const layout = normalizeLayoutOverride(change.layout);
+    if (item && JSON.stringify(item.layout) !== JSON.stringify(layout)) {
+      if (layout) item.layout = layout; else delete item.layout;
+      selected = item.id; setDirty(); message = '模块尺寸已调整，保存后生效。';
+    }
+  }
+  renderModuleList(); renderFields(); updatePreview();
+  if (message) document.querySelector('#layout-status').textContent = message;
+}
 
 function move(id, offset) {
   const list = state.draft.modules;
@@ -196,9 +234,13 @@ function renderModuleList() {
   state.draft.modules.forEach((item, index) => {
     const meta = catalog.find(meta => meta.id === item.type);
     const row = document.createElement('div');
+    row.dataset.moduleId = item.id;
     row.className = `module-row${selected === item.id ? ' selected' : ''}${item.audience !== 'private' && item.visible === false ? ' hidden-module' : ''}`;
     row.innerHTML = `<button type="button" class="module-select" aria-pressed="${selected === item.id}"><span class="module-number">${String(index + 1).padStart(2, '0')}</span><span><strong>${escape(meta?.name || item.type)}</strong><small>${escape((item.data.title || item.data.label || '模块内容').replaceAll('\n', ' '))}</small></span></button><div class="row-controls"><button type="button" data-action="up" title="向上移动" aria-label="向上移动 ${escape(meta?.name || '模块')}" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-action="down" title="向下移动" aria-label="向下移动 ${escape(meta?.name || '模块')}" ${index === state.draft.modules.length - 1 ? 'disabled' : ''}>↓</button></div>`;
-    row.querySelector('.module-select').onclick = () => { selected = item.id; renderModuleList(); renderFields(); };
+    const drag = document.createElement('button'); drag.type = 'button'; drag.className = 'layout-drag list-drag'; drag.dataset.layoutAction = 'move'; drag.dataset.label = meta?.name || '模块';
+    drag.setAttribute('aria-label', `拖动排序 ${meta?.name || '模块'}`); drag.setAttribute('aria-describedby', 'layout-help'); drag.innerHTML = '<span aria-hidden="true">⠿</span>';
+    row.prepend(drag);
+    row.querySelector('.module-select').onclick = () => selectModule(item.id);
     const scope = document.createElement('span'); scope.className = `row-audience ${item.audience === 'private' ? 'private' : ''}`; scope.textContent = item.audience === 'private' ? 'Private' : 'Public';
     row.querySelector('strong').append(scope);
     row.querySelector('[data-action="up"]').onclick = () => move(item.id, -1);
@@ -228,9 +270,23 @@ function renderFields() {
   const widthSelect = widthField.querySelector('select');
   if (item.layout?.span && ![3, 4, 6, 8, 12].includes(item.layout.span)) widthSelect.add(new Option(`${item.layout.span} / 12 列`, String(item.layout.span)));
   widthSelect.value = item.layout?.span ? String(item.layout.span) : '';
-  widthSelect.onchange = () => { if (widthSelect.value) item.layout = { span: Number(widthSelect.value) }; else delete item.layout; setDirty(); updatePreview(); };
+  widthSelect.onchange = () => {
+    const layout = { ...item.layout }; if (widthSelect.value) layout.span = Number(widthSelect.value); else delete layout.span;
+    finishArrange({ kind: 'resize', id: item.id, layout });
+  };
   const widthHelp = document.createElement('p'); widthHelp.className = 'scope-help'; widthHelp.textContent = '空间不足时会自动加宽、换行；模块顺序保持不变。';
   container.append(widthField, widthHelp);
+  const heightField = document.createElement('label'); heightField.className = 'field';
+  heightField.innerHTML = '<span>模块高度</span><input type="number" min="120" max="1600" step="1" placeholder="自动，随内容或模块比例" aria-label="模块高度（像素）">';
+  const heightInput = heightField.querySelector('input'); heightInput.value = item.layout?.height ?? '';
+  heightInput.onchange = () => {
+    if (!heightInput.checkValidity()) { heightInput.reportValidity(); return; }
+    const layout = { ...item.layout }; if (heightInput.value) layout.height = Number(heightInput.value); else delete layout.height;
+    finishArrange({ kind: 'resize', id: item.id, layout });
+  };
+  const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'text-button reset-layout'; reset.textContent = '恢复推荐尺寸'; reset.disabled = !item.layout;
+  reset.onclick = () => finishArrange({ kind: 'resize', id: item.id });
+  container.append(heightField, reset);
   if (module) {
     try {
       container.append(module.edit({ data: item.data, change(next, refresh = false) {
@@ -295,12 +351,21 @@ async function save(publish = false) {
 }
 
 async function loadEditor() {
+  layoutEditor?.destroy(); layoutEditor = undefined;
   state = await api('admin/state'); dirty = false; selected = state.draft.modules[0]?.id;
   previewAudience = 'private';
   await refreshResources(state.draft);
   document.title = '编辑台 · Mosaic';
   app.innerHTML = `<div class="editor-shell"><header class="editor-header"><a class="brand" href="private">${logo}</a><span class="workspace-badge">编辑台</span><span id="save-status" role="status">所有草稿已保存</span><div class="editor-toolbar"><a class="text-button" href="./" target="_blank" rel="noopener">Public ↗</a><a class="text-button" href="private" target="_blank" rel="noopener">Private ↗</a><button class="button outline" id="save-draft">保存草稿</button><button class="button primary" id="publish">发布公开内容 <span aria-hidden="true">↗</span></button></div></header><main id="main" class="editor-layout"><aside class="editor-sidebar"><div class="sidebar-intro"><div class="eyebrow">BUILD YOUR SPACE</div><h1>一块一块，拼出你的样子。</h1></div><div id="space-settings"></div><div class="section-heading"><h2>页面模块 <span id="module-count"></span></h2><button class="text-button" id="add-module">＋ 添加</button></div><div id="module-list"></div><div id="module-fields"></div><div class="sidebar-bottom"><span>新模块默认 Private</span><button class="text-button" id="logout">退出登录</button></div></aside><section class="workspace-preview" aria-label="页面实时预览"><div class="preview-toolbar"><div><strong>实时预览</strong><span>公开页以发布版本为准。</span></div><div class="segmented"><button type="button" id="wide-preview" class="active" aria-pressed="true">宽屏</button><button type="button" id="narrow-preview" aria-pressed="false">窄屏</button></div></div><div class="audience-preview"><span>预览范围</span><div class="segmented"><button type="button" id="private-preview" class="active" aria-pressed="true">Private · 全部</button><button type="button" id="public-preview" aria-pressed="false">Public · 公开</button></div></div><div class="preview" id="preview"><div class="preview-topline"><span>Mosaic</span><span class="dot"></span></div><div class="page-grid" id="preview-page"></div><div class="preview-bottomline">YOUR PERSONAL CANVAS</div></div></section></main><dialog id="module-picker"><div class="dialog-heading"><div><div class="eyebrow">ADD A LITTLE SOMETHING</div><h2>给空间加一块内容。</h2></div><button type="button" class="icon-button" id="close-picker" aria-label="关闭">×</button></div><div class="module-options"></div></dialog></div>`;
   document.querySelector('#space-settings').append(field('空间名称', state.draft.title, value => { state.draft.title = value; setDirty(); }, { maxLength: 80 }));
+  const help = document.createElement('p'); help.id = 'layout-help'; help.className = 'layout-help'; help.textContent = '拖动 ⠿ 排序，拉动右下角调整大小。键盘：聚焦手柄后用方向键调整，拖动时按 Esc 取消。';
+  document.querySelector('.audience-preview').after(help);
+  const status = document.createElement('div'); status.id = 'layout-status'; status.className = 'sr-only'; status.setAttribute('role', 'status'); document.querySelector('.workspace-preview').append(status);
+  layoutEditor = attachLayoutEditor(document.querySelector('.editor-layout'), {
+    getModule(id) { const item = state.draft.modules.find(item => item.id === id); return { meta: definitions.get(item?.type)?.meta.layout, override: item?.layout }; },
+    select: selectModule,
+    complete: finishArrange,
+  });
   document.querySelector('#add-module').onclick = showPalette;
   document.querySelector('#close-picker').onclick = () => document.querySelector('#module-picker').close();
   document.querySelector('#save-draft').onclick = () => save();
