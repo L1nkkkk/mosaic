@@ -1,0 +1,11 @@
+[Unit]
+Description=Automatically update Mosaic from GitHub releases
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=60s
+RandomizedDelaySec=10s
+Unit=mosaic-update.service
+
+[Install]
+WantedBy=timers.target
