@@ -1,9 +1,10 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { loadModules, initialPage, validatePage } from './modules.js';
+import { loadModules, initialPage, validatePage, publicPage, savePageDraft } from './modules.js';
 import { PageStore, ConflictError } from './store.js';
 import { createAuth } from './auth.js';
+import { readStatus } from './status.js';
 
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
 
@@ -20,6 +21,7 @@ export async function createApp(config) {
   const auth = createAuth({ hash: config.passwordHash, secret: config.sessionSecret, secure: publicOrigin.startsWith('https:'), basePath });
   const loginAttempts = new Map();
   const index = (await readFile(path.join(root, 'web/index.html'), 'utf8')).replaceAll('__BASE__', `${basePath}/`);
+  const catalog = privateAccess => ({ modules: [...registry.values()].filter(module => privateAccess || !module.meta.privateOnly).map(module => ({ ...module.meta, entry: `modules/${module.meta.id}/index.js` })) });
 
   function json(response, status, value, headers = {}) {
     response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
@@ -56,13 +58,13 @@ export async function createApp(config) {
       if (!['GET', 'HEAD', 'POST', 'PUT'].includes(method)) return json(response, 405, { error: 'Method not allowed' });
       if (['POST', 'PUT'].includes(method) && request.headers.origin !== publicOrigin) return json(response, 403, { error: '请求来源不正确，请从本站编辑台操作。' });
 
-      if (route === '/api/health' && method === 'GET') return json(response, 200, { ok: true, version: config.version, commit: config.commit, modules: [...registry.keys()] });
+      if (route === '/api/health' && method === 'GET') return json(response, 200, { ok: true, version: config.version, commit: config.commit });
       if (route === '/api/page' && method === 'GET') {
         const state = await store.read();
-        const page = { ...state.published, modules: state.published.modules.filter(module => module.visible !== false) };
+        const page = publicPage(state.published, registry);
         return json(response, 200, { page, publishedAt: state.publishedAt, version: config.version, commit: config.commit });
       }
-      if (route === '/api/modules' && method === 'GET') return json(response, 200, { modules: [...registry.values()].map(module => ({ ...module.meta, entry: `modules/${module.meta.id}/index.js` })) });
+      if (route === '/api/modules' && method === 'GET') return json(response, 200, catalog(false));
       if (route === '/api/session' && method === 'GET') return json(response, 200, { authenticated: auth.authenticated(request) });
       if (route === '/api/login' && method === 'POST') {
         // Only the trusted reverse proxy can reach the production HTTP listener.
@@ -81,21 +83,33 @@ export async function createApp(config) {
         return json(response, 200, { ok: true }, { 'Set-Cookie': auth.loginCookie() });
       }
       if (route === '/api/logout' && method === 'POST') return json(response, 200, { ok: true }, { 'Set-Cookie': auth.logoutCookie() });
+      if (route.startsWith('/api/private/')) {
+        if (!auth.authenticated(request)) return json(response, 401, { error: '请先登录私人空间。' });
+        if (route === '/api/private/page' && method === 'GET') {
+          const state = await store.read();
+          return json(response, 200, { page: validatePage(state.draft, registry), updatedAt: state.updatedAt, version: config.version });
+        }
+        if (route === '/api/private/status' && method === 'GET') return json(response, 200, await readStatus(config.statusFile));
+      }
       if (route.startsWith('/api/admin/')) {
         if (!auth.authenticated(request)) return json(response, 401, { error: '请先登录编辑台。' });
-        if (route === '/api/admin/state' && method === 'GET') return json(response, 200, await store.read());
+        if (route === '/api/admin/modules' && method === 'GET') return json(response, 200, catalog(true));
+        if (route === '/api/admin/state' && method === 'GET') {
+          const state = await store.read();
+          return json(response, 200, { ...state, draft: validatePage(state.draft, registry), published: validatePage(state.published, registry) });
+        }
         if (route === '/api/admin/draft' && method === 'PUT') {
           const payload = await body(request);
           let page;
           try { page = validatePage(payload.page, registry); } catch (error) { return json(response, 400, { error: error.message }); }
-          return json(response, 200, await store.mutate(payload.revision, state => ({ ...state, draft: page })));
+          return json(response, 200, await store.mutate(payload.revision, state => savePageDraft(state, page)));
         }
         if (route === '/api/admin/publish' && method === 'POST') {
           const payload = await body(request);
           return json(response, 200, await store.mutate(payload.revision, state => ({ ...state, published: validatePage(state.draft, registry), publishedAt: new Date().toISOString() })));
         }
       }
-      if (method === 'GET' && (route === '/' || route === '/edit' || route === '/edit/')) {
+      if (method === 'GET' && ['/', '/public', '/public/', '/private', '/private/', '/edit', '/edit/'].includes(route)) {
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         return response.end(index);
       }

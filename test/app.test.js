@@ -15,7 +15,7 @@ const origin = 'https://mosaic.test';
 
 async function fixture(t) {
   const directory = await mkdtemp(path.join(tmpdir(), 'mosaic-test-'));
-  const config = { root, dataDirectory: directory, basePath: '/mosaic', publicOrigin: origin, passwordHash: hash, sessionSecret: 'test-session-secret-at-least-32-characters', version: 'test', commit: 'test-commit' };
+  const config = { root, dataDirectory: directory, statusFile: path.join(directory, 'status.json'), basePath: '/mosaic', publicOrigin: origin, passwordHash: hash, sessionSecret: 'test-session-secret-at-least-32-characters', version: 'test', commit: 'test-commit' };
   let app;
   let address;
   async function start() {
@@ -85,13 +85,15 @@ test('hidden modules and draft content are absent from public responses', async 
   const f = await fixture(t);
   const cookie = await f.login();
   const state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
-  state.draft.modules[0].visible = false;
-  state.draft.modules[0].data.title = 'hidden-content-marker';
+  const publicCount = (await f.request('/mosaic/api/page')).value.page.modules.length;
+  const intro = state.draft.modules.find(item => item.type === 'intro');
+  intro.visible = false;
+  intro.data.title = 'hidden-content-marker';
   const saved = await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } });
   await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: saved.value.revision } });
   const page = await f.request('/mosaic/api/page');
   assert.ok(!page.text.includes('hidden-content-marker'));
-  assert.equal(page.value.page.modules.length, state.draft.modules.length - 1);
+  assert.equal(page.value.page.modules.length, publicCount - 1);
 });
 
 test('bad module data and dangerous link protocols are rejected without changing saved content', async t => {
@@ -148,4 +150,98 @@ test('deployment preflight rejects content referencing unavailable modules', asy
   await writeFile(filename, original);
   await assert.rejects(createApp(f.config), /不支持的模块/);
   assert.equal(await readFile(filename, 'utf8'), original);
+});
+
+test('private modules never enter public responses, even for a signed-in visitor', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const note = state.draft.modules.find(item => item.type === 'note');
+  note.audience = 'private'; note.visible = true; note.data.body = 'PRIVATE-MODULE-CONTENT-MARKER';
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  assert.equal(state.draft.modules.find(item => item.id === note.id).visible, false);
+  await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
+  for (const visitor of [undefined, cookie]) {
+    const publicResponse = await f.request('/mosaic/api/page?audience=private', { cookie: visitor });
+    assert.equal(publicResponse.status, 200);
+    assert.ok(!publicResponse.text.includes('PRIVATE-MODULE-CONTENT-MARKER'));
+    assert.ok(!publicResponse.value.page.modules.some(item => item.type.endsWith('-status')));
+    assert.ok((await f.request('/mosaic/api/modules', { cookie: visitor })).value.modules.every(module => !module.privateOnly));
+  }
+  const owner = await f.request('/mosaic/api/private/page', { cookie });
+  assert.equal(owner.value.page.modules.length, state.draft.modules.length);
+  assert.ok(owner.text.includes('PRIVATE-MODULE-CONTENT-MARKER'));
+});
+
+test('saving Private immediately revokes published access; restoring Public requires publishing', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const id = state.draft.modules.find(item => item.type === 'intro').id;
+  state.draft.modules.find(item => item.id === id).audience = 'private';
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  assert.equal((await f.request('/mosaic/api/page')).value.page.modules.some(item => item.id === id), false);
+  // Even an old reader that only understands visible cannot expose the content.
+  assert.equal(state.published.modules.find(item => item.id === id).visible, false);
+  await f.restart();
+  assert.equal((await f.request('/mosaic/api/page')).value.page.modules.some(item => item.id === id), false);
+  const item = state.draft.modules.find(item => item.id === id);
+  item.audience = 'public'; item.visible = true;
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  assert.equal((await f.request('/mosaic/api/page')).value.page.modules.some(item => item.id === id), false);
+  await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
+  assert.equal((await f.request('/mosaic/api/page')).value.page.modules.some(item => item.id === id), true);
+});
+
+test('status data and private catalog require authentication, and snapshots are allowlisted', async t => {
+  const f = await fixture(t);
+  const marker = 'TOKEN-AND-MESSAGE-MUST-NOT-LEAK';
+  const snapshot = { schemaVersion: 1, collectedAt: new Date().toISOString(), token: marker, server: { cpuPercent: 8.5, cpuCount: 4, memory: { used: 100, total: 500, available: 400 }, hostname: marker }, bot: { qqOnline: true, onebotConnected: true, astrbot: { running: true, restarts: 0, secret: marker }, messages: [marker] } };
+  await writeFile(f.config.statusFile, JSON.stringify(snapshot));
+  for (const route of ['/mosaic/api/private/page', '/mosaic/api/private/status', '/mosaic/api/admin/modules']) assert.equal((await f.request(route)).status, 401);
+  const cookie = await f.login();
+  const status = await f.request('/mosaic/api/private/status', { cookie });
+  assert.equal(status.status, 200);
+  assert.equal(status.value.stale, false);
+  assert.equal(status.value.server.cpuPercent, 8.5);
+  assert.equal(status.value.bot.qqOnline, true);
+  assert.ok(!status.text.includes(marker));
+  snapshot.collectedAt = new Date(Date.now() - 180_000).toISOString();
+  await writeFile(f.config.statusFile, JSON.stringify(snapshot));
+  assert.equal((await f.request('/mosaic/api/private/status', { cookie })).value.stale, true);
+  await writeFile(f.config.statusFile, 'broken');
+  assert.equal((await f.request('/mosaic/api/private/status', { cookie })).value.available, false);
+});
+
+test('status modules cannot be marked Public and unknown audiences are rejected', async t => {
+  const f = await fixture(t);
+  const cookie = await f.login();
+  const state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  for (const type of ['server-status', 'bot-status']) {
+    const page = structuredClone(state.draft);
+    page.modules.find(item => item.type === type).audience = 'public';
+    assert.equal((await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page } })).status, 400);
+  }
+  const page = structuredClone(state.draft);
+  page.modules.find(item => item.type === 'intro').audience = 'everyone';
+  assert.equal((await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page } })).status, 400);
+  assert.equal((await f.request('/mosaic/api/admin/state', { cookie })).value.revision, state.revision);
+});
+
+test('legacy public modules remain public, and hidden saved drafts remain visible in Private', async t => {
+  const f = await fixture(t);
+  const filename = path.join(f.directory, 'content.json');
+  const original = JSON.parse(await readFile(filename, 'utf8'));
+  for (const page of [original.draft, original.published]) for (const item of page.modules) delete item.audience;
+  original.draft.modules.find(item => item.type === 'intro').visible = false;
+  original.draft.modules.find(item => item.type === 'intro').data.title = 'UNPUBLISHED-PRIVATE-PREVIEW';
+  await writeFile(filename, JSON.stringify(original));
+  await f.restart();
+  const cookie = await f.login();
+  const publicResponse = await f.request('/mosaic/api/page');
+  assert.ok(publicResponse.value.page.modules.some(item => item.type === 'intro'));
+  assert.ok(!publicResponse.text.includes('UNPUBLISHED-PRIVATE-PREVIEW'));
+  const owner = await f.request('/mosaic/api/private/page', { cookie });
+  assert.equal(owner.value.page.modules.length, original.draft.modules.length);
+  assert.ok(owner.text.includes('UNPUBLISHED-PRIVATE-PREVIEW'));
 });

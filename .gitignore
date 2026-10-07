@@ -7,3 +7,5 @@ coverage/
 *.log
 .DS_Store
 outputs/
+__pycache__/
+*.pyc

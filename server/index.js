@@ -13,6 +13,7 @@ const app = await createApp({
   publicOrigin: process.env.PUBLIC_ORIGIN || `http://localhost:${port}`,
   passwordHash: process.env.ADMIN_PASSWORD_HASH,
   sessionSecret: process.env.SESSION_SECRET,
+  statusFile: process.env.STATUS_FILE || '/status/status.json',
   version: pkg.version,
   commit: process.env.GIT_SHA || 'development',
 });

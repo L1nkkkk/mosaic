@@ -1,0 +1,12 @@
+.status-module { padding:30px; border:1px solid #dde1d4; }
+.status-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.status-heading .eyebrow { font-size:8px; color:#8d9884; letter-spacing:1.5px; }
+.status-heading h2 { font-size:21px; line-height:1.5; letter-spacing:-.5px; margin-top:13px; }
+.status-freshness { font-size:9px; color:#608153; white-space:nowrap; padding:5px 8px; border-radius:20px; background:#edf2e7; }
+.status-freshness.stale { color:#978458; background:#f3eddd; }
+.status-foot { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; font-size:9px; line-height:1.7; color:#929b88; margin-top:26px; padding-top:16px; border-top:1px solid #d9dfcf; }
+@container (max-width:400px) {
+  .status-module { padding:24px; }
+  .status-heading { flex-direction:column; gap:10px; }
+  .status-heading h2 { font-size:20px; }
+}

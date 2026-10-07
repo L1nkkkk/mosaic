@@ -16,6 +16,7 @@ ENV_FILE=${ENV_FILE:-/etc/mosaic/app.env}
 [[ -f "$ENV_FILE" ]] || { echo 'Missing private app.env' >&2; exit 1; }
 install -d -m 700 "$APP_DIR" "$APP_DIR/backups"
 install -d -m 700 -o 1000 -g 1000 "$APP_DIR/data"
+install -d -m 755 "$APP_DIR/monitor"
 work=$(mktemp -d "$APP_DIR/.deploy-XXXXXX")
 changed=0
 committed=0
@@ -48,7 +49,9 @@ run_container() {
     --cap-drop ALL --security-opt no-new-privileges --pids-limit 64 \
     --memory 192m --memory-swap 192m --cpus 0.5 \
     --log-driver json-file --log-opt max-size=5m --log-opt max-file=2 \
-    --mount "type=bind,src=$data,dst=/data" -p "127.0.0.1:$port:3000" "$next" >/dev/null
+    --mount "type=bind,src=$data,dst=/data" \
+    --mount "type=bind,src=$APP_DIR/monitor,dst=/status,readonly" \
+    -p "127.0.0.1:$port:3000" "$next" >/dev/null
 }
 
 healthy() {
