@@ -188,3 +188,23 @@ state = await requestJSON('admin/publish', 'POST', {
 模块目录不会自动注册后端路由。需要新数据源时，由维护者在 [`server/app.js`](../server/app.js) 增加明确路由，并决定它是否需要登录、输出哪些字段以及如何处理失败。
 
 私密数据路由必须在服务端做鉴权；前端选择 Private 或模块 `privateOnly` 声明，不能代替接口权限检查。模块源码和 `/web/`、`/modules/` 静态资源本身公开可读。不要将凭据、令牌、完整配置或未经筛选的第三方响应直接返回给浏览器。
+
+## 8. 节点出口快照
+
+`GET /api/private/proxies` 必须登录，未登录返回 401。它读取 `PROXY_STATUS_FILE`（默认 `/status/proxies.json`），不直接调用 Mihomo。快照大小上限 256 KiB，节点和策略组各最多 100 项；未知字段被删除。
+
+```text
+{
+  available: boolean, stale: boolean, collectedAt: ISO时间 | null,
+  groups: [{ name, selected }],
+  nodes: [{
+    name, reachable: boolean | null, checkedAt: ISO时间 | null,
+    ip: IP地址 | null, country, countryCode, region, city, isp,
+    delayMs: number | null, delayAt: ISO时间 | null,
+    firstSeen, lastSeen, stableSince: ISO时间 | null,
+    samples: number | null, changes: number | null
+  }]
+}
+```
+
+未采集、损坏、无法读取时 `available: false, stale: true`，两个列表为空。采集超过 20 分钟或超前超过 10 秒时标过期；延迟记录过期也会单独清空延迟。节点 `reachable: false` 表示本轮出口查询失败，历史 IP 和地区仍可保留，但客户端必须标记历史结果。`samples` 为成功观测次数，`changes` 为成功观测之间的出口变化次数，两者不能确认静态 IP。地理信息为第三方数据库估算；快照不含节点地址、凭据、订阅 URL 或原始控制接口响应。

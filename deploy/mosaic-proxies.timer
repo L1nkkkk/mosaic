@@ -1,0 +1,11 @@
+[Unit]
+Description=Probe Mosaic node egress every 15 minutes
+
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=15min
+AccuracySec=10s
+Unit=mosaic-proxies.service
+
+[Install]
+WantedBy=timers.target

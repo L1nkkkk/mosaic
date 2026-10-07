@@ -15,7 +15,7 @@ const origin = 'https://mosaic.test';
 
 async function fixture(t) {
   const directory = await mkdtemp(path.join(tmpdir(), 'mosaic-test-'));
-  const config = { root, dataDirectory: directory, statusFile: path.join(directory, 'status.json'), basePath: '/mosaic', publicOrigin: origin, passwordHash: hash, sessionSecret: 'test-session-secret-at-least-32-characters', version: 'test', commit: 'test-commit' };
+  const config = { root, dataDirectory: directory, statusFile: path.join(directory, 'status.json'), proxyStatusFile: path.join(directory, 'proxies.json'), basePath: '/mosaic', publicOrigin: origin, passwordHash: hash, sessionSecret: 'test-session-secret-at-least-32-characters', version: 'test', commit: 'test-commit' };
   let app;
   let address;
   async function start() {
@@ -309,4 +309,28 @@ test('dragged order and frame sizes survive save, replacement and publication wi
   delete note.layout.height;
   state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
   assert.deepEqual(state.draft.modules.find(item => item.id === note.id).layout, { span: 4 });
+});
+
+
+test('proxy egress requires login, allowlists fields and cannot be published', async t => {
+  const f = await fixture(t);
+  const at = new Date().toISOString();
+  await writeFile(f.config.proxyStatusFile, JSON.stringify({ schemaVersion: 1, collectedAt: at,
+    secret: 'NEVER-EXPOSE', groups: [{ name: 'X-AUTO', selected: 'node-1', secret: 'NEVER-EXPOSE' }],
+    nodes: [{ name: 'node-1', ip: '8.8.8.8', reachable: true, checkedAt: at, uuid: 'NEVER-EXPOSE', server: 'hidden', delayMs: 120, delayAt: at, samples: 2, changes: 0 }] }));
+  assert.equal((await f.request('/mosaic/api/private/proxies')).status, 401);
+  const cookie = await f.login();
+  const result = await f.request('/mosaic/api/private/proxies', { cookie });
+  assert.equal(result.status, 200);
+  assert.equal(result.value.nodes[0].ip, '8.8.8.8');
+  assert.equal(result.value.nodes[0].delayMs, 120);
+  assert.equal(result.value.stale, false);
+  assert.ok(!result.text.includes('NEVER-EXPOSE'));
+  assert.ok(!(await f.request('/mosaic/api/modules')).value.modules.some(m => m.id === 'proxy-nodes'));
+  const state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const proxy = state.draft.modules.find(m => m.type === 'proxy-nodes');
+  assert.equal(proxy.audience, 'private');
+  assert.ok(!(await f.request('/mosaic/api/page')).value.page.modules.some(m => m.type === 'proxy-nodes'));
+  proxy.audience = 'public'; proxy.visible = true;
+  assert.equal((await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).status, 400);
 });

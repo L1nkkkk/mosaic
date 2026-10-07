@@ -22,6 +22,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Verify proxy observation history
+        run: python3 -m unittest discover -s test -p '*_test.py'
       - name: Verify the application in its production runtime
         run: docker build --target test --tag mosaic-test .
 

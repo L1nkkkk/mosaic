@@ -5,6 +5,7 @@ import { loadModules, initialPage, validatePage, publicPage, savePageDraft } fro
 import { PageStore, ConflictError } from './store.js';
 import { createAuth } from './auth.js';
 import { readStatus } from './status.js';
+import { readProxies } from './proxies.js';
 
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
 
@@ -85,6 +86,7 @@ export async function createApp(config) {
       if (route === '/api/logout' && method === 'POST') return json(response, 200, { ok: true }, { 'Set-Cookie': auth.logoutCookie() });
       if (route.startsWith('/api/private/')) {
         if (!auth.authenticated(request)) return json(response, 401, { error: '请先登录私人空间。' });
+        if (route === '/api/private/proxies' && method === 'GET') return json(response, 200, await readProxies(config.proxyStatusFile));
         if (route === '/api/private/page' && method === 'GET') {
           const state = await store.read();
           return json(response, 200, { page: validatePage(state.draft, registry), updatedAt: state.updatedAt, version: config.version });

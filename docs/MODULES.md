@@ -319,3 +319,30 @@ npm run check
 | 新字段保存后消失 | `validate()` 没有返回该字段，或把它误放在实例层而非 `data` 中 |
 
 底层契约见 [`server/modules.js`](../server/modules.js)，浏览器调用方式见 [`web/app.js`](../web/app.js)。变更契约时应同时更新本手册和模板。
+
+## 9. 代理节点模块
+
+`proxy-nodes` 是仅私人可见的实时模块，按现有 `meta / validate / render / edit / load` 契约实现。`load()` 请求 `private/proxies`，同类型实例共享快照；标题独立编辑。内部表格在窄容器改为两列节点卡片，固定高度时使用核心滚动容器。
+
+宿主机的 `deploy/collect-proxies.py` 每 15 分钟读取现有 Mihomo JSON 配置，启动短时、独立的 Mihomo 进程，为每个节点建立绑定 `127.0.0.1` 且带随机密码的 mixed listener。请求固定 HTTPS 服务查询出口后终止进程、清理临时配置；不切换运行中的策略组，不修改原配置，也不开放公网端口。每轮最多 100 个节点、4 路并发，每个节点最多两次有超时限制的请求。
+
+- 主要出口与地区服务：[ipwho.is](https://ipwhois.io/documentation)；失败后通过 [ipify](https://www.ipify.org/) 只查询 IP。地区未知时不推测。
+- 独立探测通过 Mihomo 的 [listener `proxy` 字段](https://wiki.metacubex.one/config/inbound/listeners/) 固定出站。出口是查询服务看到的 IP，不是节点接入地址；提供商按目标路由时，其他网站可能看到不同出口。
+- 延迟取生产 Mihomo 的最近探测记录，超过 20 分钟无有效记录则显示未知；不把 IP 查询接口响应时间冒充网络延迟。绿色 <300 ms，黄色 300–799 ms，红色 ≥800 ms。
+- IP 观察记录保存在宿主机 `proxy-history.json`（0600）。成功时累计观测次数、变化次数、首次/最后成功及连续未变时间。失败不推进成功记录；配置变化会重置对应节点历史，避免订阅复用编号造成混淆。
+- 稳定性灰灯“尚待观察”、蓝灯“暂未变化”、黄灯“曾变化”。本模块不从地理位置、机房 IP 或短期不变推断静态性；始终明确“静态 IP 未确认”，需要供应商证据才能确认。
+- 采集失败保留旧快照，超过 20 分钟标过期；单节点失败保留历史 IP 并标“上次成功结果”。红灯表示出口查询失败，不保证该节点对所有网站都不可用。
+
+安装（要求现有 `/opt/mihomo/build/mihomo`、JSON 格式 `/opt/mihomo/state/config.yaml`、curl、Python 3.10+）：
+
+```sh
+sudo install -m 644 deploy/collect-status.py deploy/collect-proxies.py /usr/local/lib/mosaic/
+sudo install -m 644 deploy/mosaic-proxies.service deploy/mosaic-proxies.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start mosaic-proxies.service
+sudo systemctl enable --now mosaic-proxies.timer
+```
+
+网页通过已有 `/status` 只读挂载读取 `proxies.json`，默认文件可用 `PROXY_STATUS_FILE` 覆盖。Web 容器不接触 Docker 管理接口、Mihomo 配置或控制接口。接口独立鉴权与字段白名单，详见 HTTP 参考。已存在的页面部署代码后，需要添加一个“代理节点”实例并保存，无需发布公开页。
+
+检查：`npm test`、`npm run check`、`python3 -m unittest discover -s test -p '*_test.py'`。采集器测试覆盖出口变化、失败保留、编号复用和公网 IP 校验；接口/渲染测试覆盖匿名拒绝、不可公开、白名单、过期数据及 HTML 转义。
