@@ -160,6 +160,8 @@ svg,img {
 .public-shell>main { padding-top:28px; }
 .page-grid {
   display:grid;
+  /* Refreshed cards are replaced and reflowed; they must not become scroll anchors. */
+  overflow-anchor:none;
   grid-template-columns:repeat(12,minmax(0,1fr));
   gap:22px;
   min-width:0

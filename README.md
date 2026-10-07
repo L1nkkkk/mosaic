@@ -37,6 +37,8 @@ npm test
 npm run check
 ```
 
+自动刷新与滚动位置的浏览器回归检查：安装 Chrome / Chromium 后运行 `npm run test:browser`。测试使用临时数据和独立浏览器配置，不连接生产站点；自定义浏览器路径可设置 `CHROME_BIN`。
+
 ## 模块约定
 
 新增 `modules/<id>/index.js` 和 `style.css`，无需改核心中的模块列表。模块导出：
