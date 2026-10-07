@@ -137,3 +137,15 @@ test('unreadable existing content fails startup instead of resetting the site', 
   await assert.rejects(createApp(f.config));
   assert.equal(await readFile(filename, 'utf8'), 'not-valid-json');
 });
+
+test('deployment preflight rejects content referencing unavailable modules', async t => {
+  const f = await fixture(t);
+  await f.stop();
+  const filename = path.join(f.directory, 'content.json');
+  const state = JSON.parse(await readFile(filename, 'utf8'));
+  state.draft.modules[0].type = 'module-removed-in-new-release';
+  const original = JSON.stringify(state);
+  await writeFile(filename, original);
+  await assert.rejects(createApp(f.config), /不支持的模块/);
+  assert.equal(await readFile(filename, 'utf8'), original);
+});

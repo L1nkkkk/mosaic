@@ -13,6 +13,10 @@ export async function createApp(config) {
   const registry = await loadModules(path.join(root, 'modules'));
   const store = new PageStore(dataDirectory, initialPage(registry));
   await store.initialize();
+  // Preflight deployments must reject modules that cannot read existing content.
+  const existing = await store.read();
+  validatePage(existing.draft, registry);
+  validatePage(existing.published, registry);
   const auth = createAuth({ hash: config.passwordHash, secret: config.sessionSecret, secure: publicOrigin.startsWith('https:'), basePath });
   const loginAttempts = new Map();
   const index = (await readFile(path.join(root, 'web/index.html'), 'utf8')).replaceAll('__BASE__', `${basePath}/`);

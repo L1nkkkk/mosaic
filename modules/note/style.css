@@ -1,1 +1,53 @@
-.note-module{background:#e3ead8;padding:35px 38px 36px;position:relative;min-height:316px}.note-module .eyebrow{font-size:9px;color:#8c987e}.note-module h2{font-size:25px;line-height:1.65;letter-spacing:-.8px;font-weight:600;margin:28px 0 17px;max-width:88%;overflow-wrap:anywhere}.note-module p{color:#7a886d;font-size:12px;line-height:2.05;white-space:pre-wrap;max-width:96%;overflow-wrap:anywhere}.note-mark{position:absolute;right:28px;top:27px;font-size:28px;color:#a6b691;line-height:1}@container(max-width:400px){.note-module{padding:29px 25px;min-height:290px}.note-module h2{font-size:23px;max-width:100%}.note-module p{font-size:12px;max-width:100%}.note-mark{right:24px;font-size:24px}}
+.note-module {
+  background:#e3ead8;
+  padding:35px 38px 36px;
+  position:relative;
+  min-height:316px
+}
+.note-module .eyebrow {
+  font-size:9px;
+  color:#8c987e
+}
+.note-module h2 {
+  font-size:25px;
+  line-height:1.65;
+  letter-spacing:-.8px;
+  font-weight:600;
+  margin:28px 0 17px;
+  max-width:88%;
+  overflow-wrap:anywhere
+}
+.note-module p {
+  color:#7a886d;
+  font-size:12px;
+  line-height:2.05;
+  white-space:pre-wrap;
+  max-width:96%;
+  overflow-wrap:anywhere
+}
+.note-mark {
+  position:absolute;
+  right:28px;
+  top:27px;
+  font-size:28px;
+  color:#a6b691;
+  line-height:1
+}
+@container(max-width:400px) {
+  .note-module {
+    padding:29px 25px;
+    min-height:290px
+  }
+  .note-module h2 {
+    font-size:23px;
+    max-width:100%
+  }
+  .note-module p {
+    font-size:12px;
+    max-width:100%
+  }
+  .note-mark {
+    right:24px;
+    font-size:24px
+  }
+}
