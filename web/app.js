@@ -1,3 +1,5 @@
+import { createModuleHost } from './runtime.js';
+import { openLab } from './lab.js';
 import { escape, field } from './ui.js';
 import { normalizeLayout, normalizeLayoutOverride, observeModuleLayout, sizeModuleFrame } from './layout.js';
 import { attachLayoutEditor, reorderModules } from './arrange.js';
@@ -15,8 +17,37 @@ let previewAudience = 'private';
 let stopLayout = () => {};
 let layoutEditor;
 const resources = new Map();
+const mounted = new Map();
+let privateState;
+let saveQueue = Promise.resolve();
+function disposeModules() { for (const entry of mounted.values()) entry.host.dispose(); mounted.clear(); stopLayout(); }
+async function saveModule(id, data, baseData) {
+  const operation = saveQueue.then(async () => {
+    if (editing) {
+      const item = state.draft.modules.find(item => item.id === id);
+      if (!item) throw new Error('模块已移除。');
+      const module = definitions.get(item.type);
+      item.data = module.validate ? module.validate(data) : data;
+      setDirty(); updatePreview(); renderModuleList(); if (selected === id) renderFields();
+      return structuredClone(item.data);
+    }
+    try {
+      const current = privateState.page.modules.find(item => item.id === id);
+      if (!current || JSON.stringify(current.data) !== JSON.stringify(baseData)) throw Object.assign(new Error('此模块已更新，本次操作未保存，请核对最新内容后重试。'), { status: 409 });
+      privateState = await api('private/module', { method: 'PUT', body: JSON.stringify({ id, data, revision: privateState.revision }) });
+      renderPage(privateState.page, document.querySelector('#private-page'), 'private');
+      return structuredClone(privateState.page.modules.find(item => item.id === id).data);
+    } catch (error) {
+      if (error.status === 409) { privateState = await api('private/page'); renderPage(privateState.page, document.querySelector('#private-page'), 'private'); }
+      throw error;
+    }
+  });
+  saveQueue = operation.catch(() => {});
+  return operation;
+}
 const editing = /\/edit\/?$/.test(location.pathname);
-const privateArea = editing || /\/private\/?$/.test(location.pathname);
+const laboratory = /\/lab\/?$/.test(location.pathname);
+const privateArea = laboratory || editing || /\/private\/?$/.test(location.pathname);
 const logo = '<img src="web/mark.svg" width="28" height="28" alt=""><span>Mosaic<span class="brand-cn">拼页</span></span>';
 
 function notice(message, error = false) {
@@ -42,8 +73,9 @@ async function loadModules(privateAccess = false) {
   await Promise.all(catalog.map(async meta => {
     try {
       const module = await import(new URL(meta.entry, document.baseURI));
+      if (typeof module.edit !== 'function' || (typeof module.mount !== 'function' && typeof module.render !== 'function')) throw new Error('Invalid browser module contract');
       definitions.set(meta.id, { ...module, meta });
-      if (!document.querySelector(`link[data-module-style="${meta.id}"]`)) {
+      if (meta.isolation !== 'shadow' && !document.querySelector(`link[data-module-style="${meta.id}"]`)) {
         const style = document.createElement('link');
         style.rel = 'stylesheet'; style.href = new URL(`modules/${meta.id}/style.css`, document.baseURI); style.dataset.moduleStyle = meta.id;
         document.head.append(style);
@@ -58,11 +90,11 @@ async function refreshResources(page) {
     if (!requests.has(route)) requests.set(route, api(route));
     return requests.get(route);
   };
-  await Promise.all([...new Set(page.modules.map(item => item.type))].map(async type => {
-    const module = definitions.get(type);
+  await Promise.all(page.modules.map(async item => {
+    const module = definitions.get(item.type);
     if (!module?.load) return;
-    try { resources.set(type, { value: await module.load({ request }) }); }
-    catch (error) { resources.set(type, { error: '状态暂时无法读取' }); if (error.status === 401) throw error; }
+    try { resources.set(item.id, { value: await module.load({ request, id: item.id, data: structuredClone(item.data) }) }); }
+    catch (error) { resources.set(item.id, { error: '状态暂时无法读取' }); if (error.status === 401) throw error; }
   }));
 }
 
@@ -77,60 +109,67 @@ function startRefresh(action) {
 }
 
 function renderPage(page, destination, audience = 'public') {
-  const scrollPositions = new Map([...destination.children].map(slot => [slot.dataset.moduleId, slot.querySelector('.module-content')?.scrollTop || 0]));
-  const focused = document.activeElement;
-  const focusedId = destination.contains(focused) && focused.matches('.module-content,[data-layout-action]') ? focused.closest('.module-slot')?.dataset.moduleId : undefined;
-  const focusedAction = focused?.dataset.layoutAction;
+  if (!destination) return;
   stopLayout();
-  destination.replaceChildren();
+  destination.classList.toggle('masonry', page.flow === 'masonry');
   const slots = [];
-  const visible = audience === 'private' ? page.modules : page.modules.filter(module => module.audience !== 'private' && module.visible !== false && !definitions.get(module.type)?.meta.privateOnly);
+  const visible = audience === 'private' ? page.modules : page.modules.filter(item => item.audience !== 'private' && item.visible !== false && !definitions.get(item.type)?.meta.privateOnly);
+  const ids = new Set(visible.map(item => item.id));
+  for (const [id, entry] of mounted) if (!ids.has(id) || entry.slot.parentElement !== destination || visible.find(item => item.id === id)?.type !== entry.type) {
+    entry.host.dispose(); entry.slot.remove(); mounted.delete(id);
+  }
+  destination.querySelector('.empty-state')?.remove();
   if (!visible.length) destination.innerHTML = '<div class="empty-state"><p>暂无内容</p></div>';
+  let position = 0;
   for (const item of visible) {
     const module = definitions.get(item.type);
-    const slot = document.createElement('section');
-    slot.className = 'module-slot';
-    slot.dataset.moduleId = item.id;
     const layout = { ...normalizeLayout(module?.meta.layout), ...(item.layout?.span === undefined ? {} : { span: item.layout.span }) };
-    const frame = document.createElement('div'); frame.className = 'module-frame';
-    const content = document.createElement('div'); content.className = 'module-content';
+    let entry = mounted.get(item.id);
+    if (!entry) {
+      const slot = document.createElement('section'); slot.className = 'module-slot'; slot.dataset.moduleId = item.id;
+      const frame = document.createElement('div'); frame.className = 'module-frame';
+      const content = document.createElement('div'); content.className = 'module-content';
+      frame.append(content); slot.append(frame); destination.append(slot);
+      entry = { slot, frame, content, type: item.type }; mounted.set(item.id, entry);
+    }
+    const { slot, frame, content } = entry;
+    // Move only changed positions; use state-preserving DOM moves where available.
+    const before = destination.children[position++];
+    if (before !== slot) {
+      const focus = slot.contains(document.activeElement) ? document.activeElement : null;
+      if (destination.moveBefore) destination.moveBefore(slot, before || null);
+      else destination.insertBefore(slot, before || null);
+      focus?.focus({ preventScroll: true });
+    }
     sizeModuleFrame(frame, layout, item.layout?.height);
-    if (layout.aspectRatio !== undefined || item.layout?.height !== undefined) {
-      // A fixed frame can scroll when text is larger or longer than expected.
-      content.tabIndex = 0; content.setAttribute('role', 'region');
-      content.setAttribute('aria-label', `${module?.meta.name || '模块'}内容`);
+    slot.dataset.appearance = item.appearance || 'card';
+    slot.classList.toggle('editable-module', editing);
+    slot.classList.toggle('selected', editing && selected === item.id);
+    const fixed = layout.aspectRatio !== undefined || item.layout?.height !== undefined;
+    if (fixed) { content.tabIndex = 0; content.setAttribute('role', 'region'); content.setAttribute('aria-label', `${module?.meta.name || '模块'}内容`); }
+    else { content.removeAttribute('tabindex'); content.removeAttribute('role'); content.removeAttribute('aria-label'); }
+    if (editing) {
+      let bar = slot.querySelector('.module-editbar');
+      if (!bar) {
+        bar = document.createElement('div'); bar.className = 'module-editbar';
+        bar.innerHTML = `<button type="button" class="layout-drag" data-layout-action="move" data-label="${escape(module?.meta.name || '模块')}" aria-label="拖动排序 ${escape(module?.meta.name || '模块')}" aria-describedby="layout-help"><span aria-hidden="true">⠿</span><span>${escape(module?.meta.name || '模块')}</span></button><span class="layout-size"></span>`;
+        slot.prepend(bar);
+        const resize = document.createElement('button'); resize.type = 'button'; resize.className = 'layout-resize'; resize.dataset.layoutAction = 'resize';
+        resize.setAttribute('aria-label', `调整${module?.meta.name || '模块'}大小`); resize.setAttribute('aria-describedby', 'layout-help'); resize.innerHTML = '<span aria-hidden="true">↘</span>'; frame.append(resize);
+      }
+      bar.querySelector('.layout-size').textContent = `${layout.span}/12 · ${item.layout?.height === undefined ? '自动高度' : item.layout.height + 'px'}`;
+      let badge = slot.querySelector('.module-caption');
+      if (audience === 'private') {
+        if (!badge) { badge = document.createElement('div'); badge.className = 'module-caption'; slot.insertBefore(badge, frame); }
+        badge.innerHTML = `<span class="audience-badge ${item.audience === 'private' ? 'private' : 'public'}">${item.audience === 'private' ? '仅自己' : '公开'}</span>${item.audience !== 'private' && item.visible === false ? '<span class="hidden-caption">已隐藏</span>' : ''}`;
+      } else badge?.remove();
     }
-    try {
-      if (!module) throw new Error('Module unavailable');
-      content.innerHTML = module.render(item.data, resources.get(item.type));
-    } catch {
-      content.innerHTML = '<article class="module-error"><h2>这块内容暂时无法显示</h2><p>内容已保留，其他模块仍可正常浏览。</p></article>';
-    }
-    frame.append(content); slot.append(frame);
-    if (editing && destination.id === 'preview-page') {
-      slot.classList.add('editable-module');
-      slot.classList.toggle('selected', selected === item.id);
-      const bar = document.createElement('div'); bar.className = 'module-editbar';
-      bar.innerHTML = `<button type="button" class="layout-drag" data-layout-action="move" data-label="${escape(module?.meta.name || '模块')}" aria-label="拖动排序 ${escape(module?.meta.name || '模块')}" aria-describedby="layout-help"><span aria-hidden="true">⠿</span><span>${escape(module?.meta.name || '模块')}</span></button><span class="layout-size">${layout.span}/12 · ${item.layout?.height === undefined ? '自动高度' : item.layout.height + 'px'}</span>`;
-      slot.prepend(bar);
-      const resize = document.createElement('button'); resize.type = 'button'; resize.className = 'layout-resize'; resize.dataset.layoutAction = 'resize';
-      resize.setAttribute('aria-label', `调整${module?.meta.name || '模块'}大小`); resize.setAttribute('aria-describedby', 'layout-help'); resize.innerHTML = '<span aria-hidden="true">↘</span>';
-      frame.append(resize);
-    }
-    if (editing && audience === 'private') {
-      slot.classList.add('with-badge');
-      const badge = document.createElement('div'); badge.className = 'module-caption';
-      badge.innerHTML = `<span class="audience-badge ${item.audience === 'private' ? 'private' : 'public'}">${item.audience === 'private' ? '仅自己' : '公开'}</span>${item.audience !== 'private' && item.visible === false ? '<span class="hidden-caption">已隐藏</span>' : ''}`;
-      slot.insertBefore(badge, frame);
-    }
-    destination.append(slot);
+    const options = { id: item.id, appearance: item.appearance, data: item.data, resource: resources.get(item.id), writable: audience === 'private', request: route => api(route), save: data => saveModule(item.id, data, item.data) };
+    if (!entry.host) entry.host = createModuleHost(content, module || {}, options);
+    else entry.host.update(options);
     slots.push({ element: slot, content, layout });
   }
   stopLayout = observeModuleLayout(destination, slots);
-  for (const { element, content } of slots) {
-    content.scrollTop = scrollPositions.get(element.dataset.moduleId) || 0;
-    if (element.dataset.moduleId === focusedId) (focusedAction ? element.querySelector(`[data-layout-action="${focusedAction}"]`) : content)?.focus({ preventScroll: true });
-  }
 }
 
 function footer() {
@@ -141,13 +180,15 @@ async function showPublic() {
   const { page } = await api('page');
   document.title = page.title;
   app.innerHTML = `<div class="public-shell"><header class="site-header"><a class="brand" href="./" aria-label="Mosaic 首页">${logo}</a><div class="header-right"><span class="space-label">${escape(page.title)}</span><a class="button outline small" href="private">私人空间 <span aria-hidden="true">↗</span></a></div></header><main id="main"><div class="page-grid" id="public-page"></div></main>${footer()}</div>`;
+  await refreshResources(page);
   renderPage(page, document.querySelector('#public-page'));
+  startRefresh(async () => { await refreshResources(page); renderPage(page, document.querySelector('#public-page')); });
 }
 
 function showLogin() {
   clearInterval(resourceTimer);
   layoutEditor?.destroy(); layoutEditor = undefined;
-  stopLayout();
+  disposeModules();
   document.title = '登录 · Mosaic';
   const destination = editing ? '编辑台' : '私人空间';
   app.innerHTML = `<div class="public-shell"><header class="site-header"><a class="brand" href="./">${logo}</a><a class="text-button" href="./">返回公开页 ↗</a></header><main id="main" class="login-main"><section class="login-card"><h1>登录</h1><form id="login-form"><label class="field"><span>管理密码</span><input name="password" type="password" autocomplete="current-password" required maxlength="256" placeholder="输入管理密码"></label><p id="login-error" class="inline-error" role="alert"></p><button class="button primary" type="submit">进入${destination} <span aria-hidden="true">→</span></button></form></section></main>${footer()}</div>`;
@@ -158,7 +199,7 @@ function showLogin() {
     try {
       await api('login', { method: 'POST', body: JSON.stringify({ password: new FormData(event.target).get('password') }) });
       await loadModules(true);
-      if (editing) await loadEditor(); else await showPrivate();
+      if (laboratory) await showLab(); else if (editing) await loadEditor(); else await showPrivate();
     } catch (error) { document.querySelector('#login-error').textContent = error.message; }
     finally { button.disabled = false; }
   };
@@ -171,17 +212,19 @@ async function logout() {
 
 async function showPrivate() {
   const first = await api('private/page');
+  privateState = first;
   document.title = '私人空间 · Mosaic';
-  app.innerHTML = `<div class="public-shell private-shell"><header class="site-header"><a class="brand" href="private">${logo}</a><nav class="private-nav" aria-label="空间导航"><a class="text-button" href="./">公开页 ↗</a><a class="button primary small" href="edit">编辑模块</a><button class="text-button" id="private-logout">退出</button></nav></header><main id="main"><div class="private-heading"><h1>我的页面</h1><button class="button outline small" id="refresh-private">刷新状态 ↻</button></div><div class="page-grid" id="private-page"></div></main>${footer()}</div>`;
+  app.innerHTML = `<div class="public-shell private-shell"><header class="site-header"><a class="brand" href="private">${logo}</a><nav class="private-nav" aria-label="空间导航"><a class="text-button" href="lab">模块实验台</a><a class="text-button" href="./">公开页 ↗</a><a class="button primary small" href="edit">编辑模块</a><button class="text-button" id="private-logout">退出</button></nav></header><main id="main"><div class="private-heading"><h1>我的页面</h1><button class="button outline small" id="refresh-private">刷新状态 ↻</button></div><div class="page-grid" id="private-page"></div></main>${footer()}</div>`;
   document.querySelector('#private-logout').onclick = logout;
   let refreshing = false;
   const refresh = async initial => {
     if (refreshing) return;
     refreshing = true;
     try {
-      const { page } = initial || await api('private/page');
-      await refreshResources(page);
-      renderPage(page, document.querySelector('#private-page'), 'private');
+      const incoming = initial || await api('private/page');
+      if (!privateState || incoming.revision >= privateState.revision) privateState = incoming;
+      await refreshResources(privateState.page);
+      renderPage(privateState.page, document.querySelector('#private-page'), 'private');
     } finally { refreshing = false; }
   };
   document.querySelector('#refresh-private').onclick = async () => { try { await refresh(); notice('已读取最新状态。'); } catch (error) { if (error.status === 401) showLogin(); else notice(error.message, true); } };
@@ -285,6 +328,11 @@ function renderFields() {
   const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'text-button reset-layout'; reset.textContent = '恢复推荐尺寸'; reset.disabled = !item.layout;
   reset.onclick = () => finishArrange({ kind: 'resize', id: item.id });
   container.append(heightField, reset);
+  const appearance = document.createElement('label'); appearance.className = 'field';
+  appearance.innerHTML = '<span>外观</span><select aria-label="模块外观"><option value="card">模块默认</option><option value="bare">无边框</option></select>';
+  appearance.querySelector('select').value = item.appearance || 'card';
+  appearance.querySelector('select').onchange = event => { item.appearance = event.target.value; setDirty(); updatePreview(); };
+  container.append(appearance);
   if (module) {
     try {
       container.append(module.edit({ data: item.data, change(next, refresh = false) {
@@ -354,8 +402,13 @@ async function loadEditor() {
   previewAudience = 'private';
   await refreshResources(state.draft);
   document.title = '编辑台 · Mosaic';
-  app.innerHTML = `<div class="editor-shell"><header class="editor-header"><a class="brand" href="private">${logo}</a><span class="workspace-badge">编辑台</span><span id="save-status" role="status">所有草稿已保存</span><div class="editor-toolbar"><a class="text-button" href="./" target="_blank" rel="noopener">公开页 ↗</a><a class="text-button" href="private" target="_blank" rel="noopener">私人页 ↗</a><button class="button outline" id="save-draft">保存草稿</button><button class="button primary" id="publish">发布</button></div></header><main id="main" class="editor-layout"><aside class="editor-sidebar"><h1 class="sr-only">编辑页面</h1><div id="space-settings"></div><div class="section-heading"><h2>页面模块 <span id="module-count"></span></h2><button class="text-button" id="add-module">＋ 添加</button></div><div id="module-list"></div><div id="module-fields"></div><div class="sidebar-bottom"><span>新模块仅自己可见</span><button class="text-button" id="logout">退出登录</button></div></aside><section class="workspace-preview" aria-label="页面实时预览"><div class="preview-toolbar"><div><strong>预览</strong></div><div class="segmented"><button type="button" id="wide-preview" class="active" aria-pressed="true">宽屏</button><button type="button" id="narrow-preview" aria-pressed="false">窄屏</button></div></div><div class="audience-preview"><span>预览范围</span><div class="segmented"><button type="button" id="private-preview" class="active" aria-pressed="true">全部</button><button type="button" id="public-preview" aria-pressed="false">公开</button></div></div><div class="preview" id="preview"><div class="page-grid" id="preview-page"></div></div></section></main><dialog id="module-picker"><div class="dialog-heading"><div><h2>添加模块</h2></div><button type="button" class="icon-button" id="close-picker" aria-label="关闭">×</button></div><div class="module-options"></div></dialog></div>`;
+  app.innerHTML = `<div class="editor-shell"><header class="editor-header"><a class="brand" href="private">${logo}</a><span class="workspace-badge">编辑台</span><span id="save-status" role="status">所有草稿已保存</span><div class="editor-toolbar"><a class="text-button" href="lab" target="_blank" rel="noopener">实验台 ↗</a><a class="text-button" href="./" target="_blank" rel="noopener">公开页 ↗</a><a class="text-button" href="private" target="_blank" rel="noopener">私人页 ↗</a><button class="button outline" id="save-draft">保存草稿</button><button class="button primary" id="publish">发布</button></div></header><main id="main" class="editor-layout"><aside class="editor-sidebar"><h1 class="sr-only">编辑页面</h1><div id="space-settings"></div><div class="section-heading"><h2>页面模块 <span id="module-count"></span></h2><button class="text-button" id="add-module">＋ 添加</button></div><div id="module-list"></div><div id="module-fields"></div><div class="sidebar-bottom"><span>新模块仅自己可见</span><button class="text-button" id="logout">退出登录</button></div></aside><section class="workspace-preview" aria-label="页面实时预览"><div class="preview-toolbar"><div><strong>预览</strong></div><div class="segmented"><button type="button" id="wide-preview" class="active" aria-pressed="true">宽屏</button><button type="button" id="narrow-preview" aria-pressed="false">窄屏</button></div></div><div class="audience-preview"><span>预览范围</span><div class="segmented"><button type="button" id="private-preview" class="active" aria-pressed="true">全部</button><button type="button" id="public-preview" aria-pressed="false">公开</button></div></div><div class="preview" id="preview"><div class="page-grid" id="preview-page"></div></div></section></main><dialog id="module-picker"><div class="dialog-heading"><div><h2>添加模块</h2></div><button type="button" class="icon-button" id="close-picker" aria-label="关闭">×</button></div><div class="module-options"></div></dialog></div>`;
   document.querySelector('#space-settings').append(field('空间名称', state.draft.title, value => { state.draft.title = value; setDirty(); }, { maxLength: 80 }));
+  const flow = document.createElement('label'); flow.className = 'field';
+  flow.innerHTML = '<span>页面排列</span><select aria-label="页面排列"><option value="grid">对齐网格</option><option value="masonry">瀑布流</option></select>';
+  flow.querySelector('select').value = state.draft.flow || 'grid';
+  flow.querySelector('select').onchange = event => { state.draft.flow = event.target.value; setDirty(); updatePreview(); };
+  document.querySelector('#space-settings').append(flow);
   const help = document.createElement('p'); help.id = 'layout-help'; help.className = 'sr-only'; help.textContent = '拖动 ⠿ 排序，拉动右下角调整大小。键盘：聚焦手柄后用方向键调整，拖动时按 Esc 取消。';
   document.querySelector('.audience-preview').after(help);
   const status = document.createElement('div'); status.id = 'layout-status'; status.className = 'sr-only'; status.setAttribute('role', 'status'); document.querySelector('.workspace-preview').append(status);
@@ -382,15 +435,18 @@ async function loadEditor() {
   startRefresh(async () => { await refreshResources(state.draft); updatePreview(); });
 }
 
+async function showLab() { disposeModules(); await openLab({ app, catalog, definitions, request: api }); }
+
+window.addEventListener('pagehide', disposeModules);
 window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
-window.addEventListener('pageshow', event => { if (event.persisted && privateArea) location.reload(); });
+window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
 
 try {
   if (privateArea) {
     const session = await api('session');
     if (session.authenticated) {
       await loadModules(true);
-      if (editing) await loadEditor(); else await showPrivate();
+      if (laboratory) await showLab(); else if (editing) await loadEditor(); else await showPrivate();
     } else showLogin();
   } else { await loadModules(); await showPublic(); }
 } catch (error) {

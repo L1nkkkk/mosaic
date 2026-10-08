@@ -334,3 +334,45 @@ test('proxy egress requires login, allowlists fields and cannot be published', a
   proxy.audience = 'public'; proxy.visible = true;
   assert.equal((await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).status, 400);
 });
+
+test('instance saves are authenticated, revision checked and limited to draft data', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const before = structuredClone(state);
+  const item = state.draft.modules.find(item => item.type === 'todo');
+  const data = { ...item.data, items: [{ id: 'done', text: '<img src=x onerror=alert(1)>', done: true }] };
+  const body = { revision: state.revision, id: item.id, data, audience: 'public', layout: { span: 1 } };
+  assert.equal((await f.request('/mosaic/api/private/module', { method: 'PUT', body })).status, 401);
+  assert.equal((await f.request('/mosaic/api/private/module', { method: 'PUT', body, cookie, requestOrigin: 'https://other.test' })).status, 403);
+  const replies = await Promise.all([1, 2].map(() => f.request('/mosaic/api/private/module', { method: 'PUT', cookie, body })));
+  assert.deepEqual(replies.map(result => result.status).sort(), [200, 409]);
+  state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  assert.deepEqual(state.published, before.published);
+  assert.deepEqual(state.draft.modules.filter(value => value.id !== item.id), before.draft.modules.filter(value => value.id !== item.id));
+  assert.deepEqual(state.draft.modules.find(value => value.id === item.id), { ...item, data });
+  assert.equal((await f.request('/mosaic/api/private/page', { cookie })).value.revision, state.revision);
+  assert.equal((await f.request('/mosaic/api/private/module', { method: 'PUT', cookie, body: { ...body, revision: state.revision, id: 'missing' } })).status, 404);
+  assert.equal((await f.request('/mosaic/api/private/module', { method: 'PUT', cookie, body: { ...body, revision: state.revision, data: { items: [{ id: 'bad', text: 'bad', done: 'yes' }] } } })).status, 400);
+  await f.restart();
+  assert.deepEqual((await f.request('/mosaic/api/admin/state', { cookie })).value, state);
+});
+
+test('page flow and module appearance survive publishing while invalid modes fail', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  state.draft.flow = 'masonry';
+  state.draft.modules.find(item => item.type === 'note').appearance = 'bare';
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
+  const page = (await f.request('/mosaic/api/page')).value.page;
+  assert.equal(page.flow, 'masonry');
+  assert.equal(page.modules.find(item => item.type === 'note').appearance, 'bare');
+  for (const mutate of [page => { page.flow = 'bad'; }, page => { page.modules[0].appearance = 'url(evil)'; }]) {
+    const invalid = structuredClone(page); mutate(invalid);
+    assert.equal((await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: invalid } })).status, 400);
+  }
+  const catalog = (await f.request('/mosaic/api/modules')).value.modules;
+  assert.equal(catalog.find(meta => meta.id === 'todo').entry, 'modules/todo/client.js');
+  assert.equal(catalog.find(meta => meta.id === 'note').entry, 'modules/note/index.js');
+  assert.equal((await f.request('/mosaic/lab')).status, 200);
+});

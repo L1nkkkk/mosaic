@@ -1,0 +1,12 @@
+.todo-module { padding: clamp(20px, 5cqi, 40px); background: var(--white); border: 1px solid var(--line); border-radius: 9px; }
+.todo-module h2 { margin: 0 0 24px; font-size: clamp(22px, 5cqi, 32px); }
+.todo-module ul { list-style: none; margin: 0; padding: 0; }
+.todo-module li { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.todo-module li label { display: flex; align-items: center; gap: 12px; flex: 1; overflow-wrap: anywhere; }
+.todo-module input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: var(--violet); }
+.todo-module .done span { color: var(--muted); text-decoration: line-through; }
+.todo-module form { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.todo-module form input { flex: 1; min-width: 120px; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
+.todo-module button { border: 0; padding: 8px 12px; border-radius: 6px; background: var(--violet-soft); color: var(--violet); cursor: pointer; }
+.todo-module [hidden] { display: none; }
+.todo-module .todo-status { color: var(--muted); font-size: 13px; min-height: 1.5em; }

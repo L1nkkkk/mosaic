@@ -1,6 +1,6 @@
 # HTTP 接口参考
 
-本文对应 Mosaic 0.4.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 更新草稿，不需要自行调用保存接口。
+本文对应 Mosaic 0.5.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
 
 [项目介绍](PROJECT.md) · [模块开发手册](MODULES.md) · [返回 README](../README.md)
 
@@ -24,14 +24,15 @@
 | `POST /api/logout` | 否 | 可发送 `{}` | `{ ok: true }` 并清除当前 Cookie |
 | `GET /api/modules` | 否 | 无 | `{ modules: [ModuleMetaWithEntry] }`，排除 `privateOnly` 类型 |
 | `GET /api/page` | 否 | 无 | `{ page, publishedAt, version, commit }`，仅已发布且未隐藏的 Public 实例 |
-| `GET /api/private/page` | 是 | 无 | `{ page, updatedAt, version }`，全部已保存草稿 |
+| `GET /api/private/page` | 是 | 无 | `{ page, revision, updatedAt, version }`，全部已保存草稿 |
+| `PUT /api/private/module` | 是 | `{ revision, id, data }` | `{ page, revision, updatedAt }`，只改指定实例草稿内容 |
 | `GET /api/private/status` | 是 | 无 | 状态快照，见第 6 节 |
 | `GET /api/admin/modules` | 是 | 无 | `{ modules: [ModuleMetaWithEntry] }`，包括全部类型 |
 | `GET /api/admin/state` | 是 | 无 | `State`，包括完整草稿和发布版本 |
 | `PUT /api/admin/draft` | 是 | `{ revision, page }` | 更新后的 `State` |
 | `POST /api/admin/publish` | 是 | `{ revision }` | 发布后的 `State` |
 
-`ModuleMetaWithEntry` 为模块导出的整个 `meta`，其中 `layout` 已规范化，并增加 `entry`，例如 `"modules/hello-card/index.js"`。它是相对于站点基础路径的入口地址。公开目录会列出全部非 `privateOnly` 类型，不只列出当前已使用的类型。
+`ModuleMetaWithEntry` 为模块导出的整个 `meta`，其中 `layout` 已规范化，并增加 `entry`，例如 `"modules/hello-card/index.js"` 或 `"modules/todo/client.js"`。它是相对于站点基础路径的入口地址。公开目录会列出全部非 `privateOnly` 类型，不只列出当前已使用的类型。
 
 ## 3. 页面与状态结构
 
@@ -54,6 +55,8 @@
 ```
 
 此例需要先安装手册中的 `hello-card` 模块。页面标题去除首尾空白后不能为空，原始长度最多 80；模块最多 30 个。实例 ID 在页面内唯一，长 1～64，只允许字母、数字、下划线和连字符。模块内容由对应的 `validate()` 校验。
+
+`Page.flow` 可省略（默认 `grid`），可设 `masonry`。实例 `appearance` 可省略（默认 `card`），可设 `bare`；无效模式会拒绝。
 
 `layout` 可省略；只允许 `span`（1～12 整数）和 `height`（120～1600 整数 CSS 像素）。`audience` 为 `public` 或 `private`。Private 的 `visible` 被规范化为 `false`，但这不会隐藏私人页中的实例。
 
@@ -132,7 +135,7 @@ state = await requestJSON('admin/publish', 'POST', {
 | `404` | 路由或资源不存在；检查 `BASE_PATH`、路径和请求方法 |
 | `405` | 使用了服务端不接受的全局方法；当前只接收 GET、HEAD、POST、PUT，具体路由仍按路由表匹配 |
 | `409` | 保存版本冲突；重新读取并合并内容 |
-| `413` | 请求体超过 128 KiB |
+| `413` | 请求体超过 128 KiB，或单实例保存后的草稿超过 120 KiB |
 | `415` | 请求体不是 `application/json` |
 | `429` | 登录尝试过多；遵循 `Retry-After`，不要连续重试 |
 | `500` | 服务端异常；查看服务日志，接口仅返回通用错误 |
@@ -208,3 +211,9 @@ state = await requestJSON('admin/publish', 'POST', {
 ```
 
 未采集、损坏、无法读取时 `available: false, stale: true`，两个列表为空。采集超过 20 分钟或超前超过 10 秒时标过期；延迟记录过期也会单独清空延迟。节点 `reachable: false` 表示本轮出口查询失败，历史 IP 和地区仍可保留，但客户端必须标记历史结果。`samples` 为成功观测次数，`changes` 为成功观测之间的出口变化次数，两者不能确认静态 IP。地理信息为第三方数据库估算；快照不含节点地址、凭据、订阅 URL 或原始控制接口响应。
+
+## 9. 模块自身保存
+
+`PUT /api/private/module` 仅接受已登录、同源请求，使用整个内容文件的 `revision` 做乐观并发检查。查找草稿中的 `id`，用该类型的 `validate(data)` 校验并替换完整 `data`，不修改范围、尺寸、顺序或发布版本。多余的请求字段不参与更新；找不到实例返回 404，版本冲突返回 409，数据校验失败返回 400。草稿 JSON 超过 120 KiB 返回 413，为完整保存请求保留包装空间。
+
+模块作者应使用 `await context.save(nextData)`，不要绕过核心直接调用这个接口。它根据当前页面区分本地编辑草稿、服务器草稿、实验草稿和只读状态。成功返回规范化后的 `data`；失败抛出错误。私人页遇到 409 会读取最新草稿并提示本次操作失败，不自动重放覆盖。编辑台保持原有冲突处理，保留未保存改动供人工合并。

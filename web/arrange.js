@@ -79,6 +79,7 @@ export function attachLayoutEditor(root, { getModule, select, complete }) {
     const layout = resizeModule(module.meta, module.override, box, { x: point.x - origin.x, y: point.y - origin.y + window.scrollY - gesture.scrollY }, width, gap);
     const meta = { ...normalizeLayout(module.meta), ...(layout?.span === undefined ? {} : { span: layout.span }) };
     const span = resolveLayoutSpan(meta, width, gap);
+    element.dataset.resizeSpan = String(span);
     element.style.gridColumn = `span ${span}`;
     sizeModuleFrame(frame, meta, layout?.height);
     const label = element.querySelector('.layout-size');
@@ -94,6 +95,7 @@ export function attachLayoutEditor(root, { getModule, select, complete }) {
     clearMarker(); ghost?.remove(); ghost = undefined;
     root.classList.remove('is-arranging');
     current.element.classList.remove('is-dragging', 'is-resizing');
+    delete current.element.dataset.resizeSpan;
     if (root.hasPointerCapture(current.pointerId)) root.releasePointerCapture(current.pointerId);
     if (current.started) {
       complete(cancel ? undefined : current.change);

@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, access } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { normalizeLayout, normalizeLayoutOverride } from '../web/layout.js';
@@ -7,15 +7,20 @@ export async function loadModules(directory) {
   const registry = new Map();
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isDirectory() || !/^[a-z][a-z0-9-]*$/.test(entry.name)) continue;
-    const module = await import(pathToFileURL(path.join(directory, entry.name, 'index.js')));
-    if (module.meta?.id !== entry.name || typeof module.validate !== 'function' || typeof module.render !== 'function' || typeof module.edit !== 'function') {
+    const files = await readdir(path.join(directory, entry.name));
+    const split = files.includes('definition.js');
+    if (split) await access(path.join(directory, entry.name, 'client.js'));
+    const module = await import(pathToFileURL(path.join(directory, entry.name, split ? 'definition.js' : 'index.js')));
+    if (module.meta?.id !== entry.name || typeof module.validate !== 'function' || (!split && (typeof module.render !== 'function' || typeof module.edit !== 'function'))) {
       throw new Error(`Invalid module contract: ${entry.name}`);
     }
     module.validate(structuredClone(module.meta.defaultData));
+    if (module.meta.animation !== undefined && !['continuous', 'demand'].includes(module.meta.animation)) throw new Error(`Invalid animation: ${entry.name}`);
+    if (module.meta.isolation !== undefined && !['light', 'shadow'].includes(module.meta.isolation)) throw new Error(`Invalid isolation: ${entry.name}`);
     let layout;
     try { layout = normalizeLayout(module.meta.layout); }
     catch (error) { throw new Error(`Invalid module layout (${entry.name}): ${error.message}`); }
-    registry.set(entry.name, { ...module, meta: { ...module.meta, layout } });
+    registry.set(entry.name, { ...module, entry: split ? 'client.js' : 'index.js', meta: { ...module.meta, layout } });
   }
   if (!registry.size) throw new Error('At least one module is required');
   return registry;
@@ -35,10 +40,12 @@ export function validatePage(input, registry) {
     if (!['public', 'private'].includes(audience)) throw new Error('请选择 Public 或 Private。');
     if (module.meta.privateOnly && audience !== 'private') throw new Error(`${module.meta.name}只能在私人页显示。`);
     const layout = normalizeLayoutOverride(item.layout);
+    if (item.appearance !== undefined && !['card', 'bare'].includes(item.appearance)) throw new Error('模块外观无效。');
     // Keep the legacy flag restrictive so older readers cannot expose private data.
-    return { id: item.id, type: item.type, audience, visible: audience === 'public' && item.visible !== false, ...(layout ? { layout } : {}), data: module.validate(item.data) };
+    return { id: item.id, type: item.type, audience, visible: audience === 'public' && item.visible !== false, ...(layout ? { layout } : {}), ...(item.appearance ? { appearance: item.appearance } : {}), data: module.validate(item.data) };
   });
-  return { title: input.title.trim(), modules };
+  if (input.flow !== undefined && !['grid', 'masonry'].includes(input.flow)) throw new Error('页面排列方式无效。');
+  return { title: input.title.trim(), ...(input.flow ? { flow: input.flow } : {}), modules };
 }
 
 export function initialPage(registry) {

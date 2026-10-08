@@ -44,21 +44,38 @@ export function resolveLayoutSpan(layout, width, gap = 0) {
 }
 
 export function observeModuleLayout(grid, slots) {
-  const update = width => {
+  let pending;
+  const update = () => {
+    pending = undefined;
+    const width = grid.getBoundingClientRect().width;
     const gap = parseFloat(getComputedStyle(grid).columnGap) || 0;
+    const masonry = grid.classList.contains('masonry');
+    const columns = Array(12).fill(0);
     for (const { element, layout } of slots) {
-      if (element.classList.contains('is-resizing')) continue;
-      const span = String(resolveLayoutSpan(layout, width, gap));
-      if (element.dataset.span !== span) {
-        element.dataset.span = span;
+      const resizing = element.classList.contains('is-resizing');
+      if (resizing && !masonry) continue;
+      const span = resizing ? Number(element.dataset.resizeSpan) || resolveLayoutSpan(layout, width, gap) : resolveLayoutSpan(layout, width, gap);
+      element.dataset.span = String(span);
+      if (masonry) {
+        let column = 0, top = Infinity;
+        for (let start = 0; start <= 12 - span; start++) {
+          const value = Math.max(...columns.slice(start, start + span));
+          if (value < top) { top = value; column = start; }
+        }
+        element.style.gridColumn = `${column + 1} / span ${span}`;
+        const height = Math.max(1, Math.ceil(element.getBoundingClientRect().height));
+        element.style.gridRow = `${top + 1} / span ${height}`;
+        columns.fill(top + height + gap, column, column + span);
+      } else {
         element.style.gridColumn = `span ${span}`;
+        element.style.gridRow = '';
       }
     }
   };
-  update(grid.getBoundingClientRect().width);
-  const observer = new ResizeObserver(entries => {
-    for (const entry of entries) if (entry.target === grid) update(entry.contentRect.width);
-  });
+  const queue = () => { if (!pending) pending = requestAnimationFrame(update); };
+  update();
+  const observer = new ResizeObserver(queue);
   observer.observe(grid);
-  return () => observer.disconnect();
+  for (const { element } of slots) observer.observe(element);
+  return () => { observer.disconnect(); cancelAnimationFrame(pending); };
 }

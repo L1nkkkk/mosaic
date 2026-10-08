@@ -22,7 +22,7 @@ export async function createApp(config) {
   const auth = createAuth({ hash: config.passwordHash, secret: config.sessionSecret, secure: publicOrigin.startsWith('https:'), basePath });
   const loginAttempts = new Map();
   const index = (await readFile(path.join(root, 'web/index.html'), 'utf8')).replaceAll('__BASE__', `${basePath}/`);
-  const catalog = privateAccess => ({ modules: [...registry.values()].filter(module => privateAccess || !module.meta.privateOnly).map(module => ({ ...module.meta, entry: `modules/${module.meta.id}/index.js` })) });
+  const catalog = privateAccess => ({ modules: [...registry.values()].filter(module => privateAccess || !module.meta.privateOnly).map(module => ({ ...module.meta, entry: `modules/${module.meta.id}/${module.entry}` })) });
 
   function json(response, status, value, headers = {}) {
     response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
@@ -89,7 +89,20 @@ export async function createApp(config) {
         if (route === '/api/private/proxies' && method === 'GET') return json(response, 200, await readProxies(config.proxyStatusFile));
         if (route === '/api/private/page' && method === 'GET') {
           const state = await store.read();
-          return json(response, 200, { page: validatePage(state.draft, registry), updatedAt: state.updatedAt, version: config.version });
+          return json(response, 200, { page: validatePage(state.draft, registry), revision: state.revision, updatedAt: state.updatedAt, version: config.version });
+        }
+        if (route === '/api/private/module' && method === 'PUT') {
+          const payload = await body(request);
+          const next = await store.mutate(payload.revision, state => {
+            const item = state.draft.modules.find(item => item.id === payload.id);
+            if (!item) throw Object.assign(new Error('模块不存在。'), { status: 404 });
+            try { item.data = registry.get(item.type).validate(payload.data); }
+            catch (error) { throw Object.assign(new Error(error.message), { status: 400 }); }
+            if (Buffer.byteLength(JSON.stringify(state.draft)) > 120 * 1024) throw Object.assign(new Error('页面内容过大。'), { status: 413 });
+            // Only this instance's draft data changes. Publication is explicit.
+            return state;
+          });
+          return json(response, 200, { page: validatePage(next.draft, registry), revision: next.revision, updatedAt: next.updatedAt });
         }
         if (route === '/api/private/status' && method === 'GET') return json(response, 200, await readStatus(config.statusFile));
       }
@@ -111,7 +124,7 @@ export async function createApp(config) {
           return json(response, 200, await store.mutate(payload.revision, state => ({ ...state, published: validatePage(state.draft, registry), publishedAt: new Date().toISOString() })));
         }
       }
-      if (method === 'GET' && ['/', '/public', '/public/', '/private', '/private/', '/edit', '/edit/'].includes(route)) {
+      if (method === 'GET' && ['/', '/public', '/public/', '/private', '/private/', '/edit', '/edit/', '/lab', '/lab/'].includes(route)) {
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         return response.end(index);
       }

@@ -160,7 +160,7 @@ svg,img {
 .public-shell>main { padding-top:28px; }
 .page-grid {
   display:grid;
-  /* Refreshed cards are replaced and reflowed; they must not become scroll anchors. */
+  /* Live resource changes must not pull the reader to another scroll anchor. */
   overflow-anchor:none;
   grid-template-columns:repeat(12,minmax(0,1fr));
   gap:22px;
@@ -825,3 +825,24 @@ dialog::backdrop {
   .editor-toolbar { flex-wrap:wrap; gap:10px; }
   .audience-preview { flex-wrap:wrap; }
 }
+
+/* Runtime surfaces retain module-owned DOM between page updates. */
+.module-surface { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.module-surface > article { flex: 1; min-width: 0; }
+.page-grid.masonry { grid-auto-rows: 1px; row-gap: 0; }
+.module-slot[data-appearance="bare"] .module-frame { border-radius: 0; }
+.module-slot[data-appearance="bare"] .module-surface > article { border: 0; border-radius: 0; box-shadow: none; }
+.lab-shell { max-width: 1800px; margin: 0 auto; padding: 0 28px 40px; }
+.lab-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; align-items: start; }
+.lab-controls { border: 1px solid var(--line); border-radius: 12px; padding: 22px; background: var(--white); }
+.lab-controls h2 { font-size: 18px; margin-top: 28px; }
+.lab-controls .lab-check { display: flex; gap: 8px; margin: 16px 0; }
+.lab-controls pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.lab-controls textarea { width: 100%; max-width: 100%; font-family: monospace; margin: 12px 0; }
+.lab-controls details { margin-top: 24px; }
+.lab-stage { min-width: 0; overflow: auto; padding: 16px; border: 1px dashed var(--line); border-radius: 12px; }
+#lab-slot { max-width: 100%; }
+#lab-message { font-size: 14px; overflow-wrap: anywhere; }
+@media (max-width: 800px) { .lab-shell { padding: 0 16px 24px; } .lab-layout { grid-template-columns: 1fr; } .lab-stage { grid-row: 1; } }
+
+.module-slot[data-appearance="bare"] .module-surface > article:not([data-own-background]) { background: transparent; }
