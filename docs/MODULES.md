@@ -1,6 +1,6 @@
 # 模块开发手册
 
-本文对应 Mosaic 0.8.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
+本文对应 Mosaic 0.9.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
 
 [项目介绍](PROJECT.md) · [HTTP 接口参考](HTTP-API.md) · [返回 README](../README.md)
 
@@ -457,3 +457,29 @@ Shadow DOM 只隔离样式，不隔离权限。当前模块仍是经维护者审
 ## 历史图表模块范例
 
 `modules/server-status/chart.js` 展示 `mount()` 如何持有 SVG、时间窗口与暂停状态：`update()` 更新数值并触发增量历史请求，`setActive()` 暂停屏幕外请求，`resize()` 用实际宽度重绘坐标，`dispose()` 阻止迟到的异步响应。图表没有注册 `frame()`，只在数据或尺寸变化时绘制。时间范围和浏览位置保存在实例中，刷新资源不会丢失；数据保存由服务器采集服务负责。
+
+
+## 生活模块范例与素材复用（0.9）
+
+- `modules/weather/`：`load({ request, data })` 按实例城市获取缓存资源；`cityKey` 防止编辑城市后展示旧城市的响应。
+- `modules/music/`：持久 `<audio>` 实例；内容更新先比较音频地址，只有换曲时才 `load()`。`dispose()` 负责暂停并释放音频源，不在每次 `update()` 重建播放器。
+- `modules/books/`：按书籍 ID 复用 DOM，支持本地上传封面、阅读状态和可选链接。
+- `modules/photo/`：`object-fit: cover` 配合独立裁切字段；图片和遮罩留在模块内，外框尺寸由核心提供。
+- `modules/visitors/`：只读统计资源，持久 SVG、更新标记与数值；空数据与接口失败分别显示。
+
+共用辅助文件 `modules/media.js` 导出：
+
+```js
+import { mediaUrl, mediaField, imageElement } from '../media.js';
+// validate() 内：空字符串表示未配置。
+const cover = mediaUrl(data.cover); // 只接受本站已上传图片路径
+const audio = mediaUrl(data.audio, 'audio'); // 本站音频或 HTTPS 直链
+// edit() 内：返回 DOM 节点；上传完成会调用 change(url)，仍需保存草稿。
+const control = mediaField('封面', data.cover, cover => change({ cover }));
+// mount()/update() 内：相同 URL 不重复设置 src，空值隐藏图片。
+imageElement(img, data.cover, data.title);
+```
+
+素材引用应作为数据中的独立字符串保存，格式是 `api/media/<sha256>.<扩展名>`，不要拼接查询参数、嵌入 HTML 或改成绝对 URL。后端递归读取草稿与发布数据中的规范路径来决定保留和公开权限；只存在前端内存中的引用不算已保存。图片只通过上传接入，不允许任意远程图片 URL。音频直链由浏览器访问，不由服务器代理下载。
+
+新增资源接口仍需明确实现后端路由，不能让模块提供任意上游 URL。天气和访客的服务端实现分别位于 `server/weather.js`、`server/visitors.js`；`server/external.js` 提供超时、响应大小上限和缓存。五个模块都没有向核心加入自己的尺寸分支。

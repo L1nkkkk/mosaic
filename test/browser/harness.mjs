@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { createApp } from '../../server/app.js';
 import { passwordHash } from '../../server/auth.js';
 
-export async function withBrowser(run) {
+export async function withBrowser(run, options = {}) {
   const root = path.resolve(fileURLToPath(new URL('../../', import.meta.url)));
   const browser = [process.env.CHROME_BIN, '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(candidate => candidate && existsSync(candidate));
   assert.ok(browser, 'Install Chrome/Chromium or set CHROME_BIN.');
@@ -21,7 +21,7 @@ export async function withBrowser(run) {
     const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
     const base = 'http://127.0.0.1:' + port;
     const app = await createApp({ root, dataDirectory: path.join(temporary, 'data'), statusFile: path.join(temporary, 'data/status.json'), basePath: '', publicOrigin: base,
-      passwordHash: await passwordHash('local-test-only'), sessionSecret: 'local-browser-test-session-secret-only', version: 'test', commit: 'test' });
+      passwordHash: await passwordHash('local-test-only'), sessionSecret: 'local-browser-test-session-secret-only', version: 'test', commit: 'test', ...options });
     server = app.server.listen(port, '127.0.0.1'); await once(server, 'listening');
     const login = await fetch(base + '/api/login', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'local-test-only' }) });
     const cookie = login.headers.get('set-cookie').split(';')[0].slice('mosaic_session='.length);

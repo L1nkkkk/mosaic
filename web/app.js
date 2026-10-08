@@ -207,6 +207,9 @@ async function showPublic() {
   document.title = page.title;
   app.innerHTML = `<div class="public-shell">${pageHeader({ title: page.title })}<main id="main"><div class="page-grid" id="public-page"></div></main>${footer()}</div>`;
   mountShell(app, 'public'); readerPage = page; bindSearch('public');
+  if (page.modules.some(item => item.type === 'visitors') && navigator.doNotTrack !== '1' && !navigator.globalPrivacyControl) {
+    void fetch(new URL('api/visit', document.baseURI), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).catch(() => {});
+  }
   renderPage(page, document.querySelector('#public-page'));
   await refreshResources(page);
   renderPage(page, document.querySelector('#public-page'));

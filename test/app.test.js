@@ -13,9 +13,9 @@ const password = 'test-only-editor-password';
 const hash = await passwordHash(password);
 const origin = 'https://mosaic.test';
 
-async function fixture(t) {
+async function fixture(t, overrides = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'mosaic-test-'));
-  const config = { root, dataDirectory: directory, statusFile: path.join(directory, 'status.json'), proxyStatusFile: path.join(directory, 'proxies.json'), basePath: '/mosaic', publicOrigin: origin, passwordHash: hash, sessionSecret: 'test-session-secret-at-least-32-characters', version: 'test', commit: 'test-commit' };
+  const config = { root, dataDirectory: directory, statusFile: path.join(directory, 'status.json'), proxyStatusFile: path.join(directory, 'proxies.json'), basePath: '/mosaic', publicOrigin: origin, passwordHash: hash, sessionSecret: 'test-session-secret-at-least-32-characters', version: 'test', commit: 'test-commit', ...overrides };
   let app;
   let address;
   async function start() {
@@ -421,4 +421,69 @@ test('history queries stay private and reject unbounded ranges', async t => {
   assert.equal((await f.request('/mosaic/api/private/history?range=all', { cookie })).status, 400);
   const result = await f.request('/mosaic/api/private/history?range=1h', { cookie });
   assert.equal(result.status, 200); assert.equal(result.value.available, false);
+});
+
+
+test('module audio stays private until publication, supports seeking, and is revoked on private save', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  const wav = Buffer.alloc(128); wav.write('RIFF'); wav.writeUInt32LE(120, 4); wav.write('WAVE', 8);
+  const upload = args => f.request('/mosaic/api/admin/media', { method: 'POST', binary: wav, headers: { 'Content-Type': 'audio/wav' }, ...args });
+  assert.equal((await upload()).status, 401);
+  const savedMedia = await upload({ cookie }); assert.equal(savedMedia.status, 200);
+  const url = '/mosaic/' + savedMedia.value.url;
+  assert.equal((await f.request(url)).status, 404);
+  assert.equal((await f.request(url, { cookie })).status, 200);
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const item = state.draft.modules.find(item => item.type === 'music');
+  item.audience = 'public'; item.visible = true;
+  item.data.tracks = [{ id: 'test', title: 'Test', artist: '', audio: savedMedia.value.url, cover: '' }];
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  assert.equal((await f.request(url)).status, 404);
+  state = (await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } })).value;
+  const range = await f.request(url, { headers: { Range: 'bytes=4-11' } });
+  assert.equal(range.status, 206); assert.equal(range.headers.get('content-range'), 'bytes 4-11/128');
+  assert.equal(range.headers.get('cache-control'), 'no-store');
+  assert.equal((await f.request(url, { headers: { Range: 'bytes=999-' } })).status, 416);
+  state.draft.modules.find(item => item.type === 'music').audience = 'private';
+  await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } });
+  assert.equal((await f.request(url)).status, 404);
+  assert.equal((await upload({ cookie, binary: Buffer.from('not audio at all') })).status, 400);
+});
+
+test('weather only exposes published city coordinates and coalesces provider requests', async t => {
+  let calls = 0;
+  const externalFetch = async url => { calls++; assert.match(String(url), /^https:\/\/api.open-meteo.com\/v1\/forecast\?/); return Response.json({ current: { temperature_2m: 21, weather_code: 0 }, daily: { time: ['2026-10-09'] }, secret: 'discard' }); };
+  const f = await fixture(t, { externalFetch }), cookie = await f.login();
+  const route = '/mosaic/api/weather?latitude=39.9&longitude=116.4';
+  assert.equal((await f.request(route)).status, 404); assert.equal(calls, 0);
+  const replies = await Promise.all([f.request(route, { cookie }), f.request(route, { cookie })]);
+  assert.equal(calls, 1); assert.equal(replies[0].value.temperature, 21); assert.ok(!replies[0].text.includes('discard'));
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const item = state.draft.modules.find(item => item.type === 'weather');
+  item.audience = 'public'; item.visible = true; item.data.city = { name: '北京', region: '中国', latitude: 39.9, longitude: 116.4 };
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  assert.equal((await f.request(route)).status, 404);
+  await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
+  assert.equal((await f.request(route)).status, 200); assert.equal(calls, 1);
+  assert.equal((await f.request(route.replace('39.9', '40'))).status, 404);
+  assert.equal((await f.request(route.replace('39.9', 'NaN'), { cookie })).status, 400);
+});
+
+test('visitor collection honors publication, owner sessions, privacy signals and survives restart', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  state.draft.modules.find(item => item.type === 'visitors').audience = 'private';
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  await f.request('/mosaic/api/visit', { method: 'POST', body: {} });
+  assert.equal((await f.request('/mosaic/api/visitors', { cookie })).value.totalViews, 0);
+  assert.equal((await f.request('/mosaic/api/visitors')).status, 404);
+  const item = state.draft.modules.find(item => item.type === 'visitors'); item.audience = 'public'; item.visible = true;
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
+  await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
+  for (const options of [{ cookie }, { headers: { DNT: '1' } }, { headers: { 'Sec-GPC': '1' } }]) await f.request('/mosaic/api/visit', { method: 'POST', body: {}, ...options });
+  assert.equal((await f.request('/mosaic/api/visitors')).value.totalViews, 0);
+  for (let i = 0; i < 2; i++) await f.request('/mosaic/api/visit', { method: 'POST', body: {} });
+  assert.equal((await f.request('/mosaic/api/visitors')).value.totalViews, 1);
+  await f.restart();
+  assert.equal((await f.request('/mosaic/api/visitors')).value.today.visitors, 1);
 });

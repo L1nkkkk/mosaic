@@ -202,3 +202,6 @@ dialog { backdrop-filter: blur(24px); }
 #background-status { min-height: 2.5em; }
 
 .mosaic-layout.view-public { --sidebar-width: 0px; }
+.media-editor { padding:12px; border:1px solid var(--line); border-radius:8px; min-width:0; }
+.media-editor input[type="file"] { max-width:100%; font-size:11px; }
+.media-editor small { font-size:10px; line-height:1.6; color:var(--muted); overflow-wrap:anywhere; }

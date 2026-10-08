@@ -1,3 +1,6 @@
+import { MediaStore, mediaReferences, MAX_MEDIA_BYTES } from './media.js';
+import { weatherProvider, coordinates } from './weather.js';
+import { Visitors } from './visitors.js';
 import http from 'node:http';
 import { historyReader } from './history.js';
 import { createHash, randomBytes } from 'node:crypto';
@@ -26,6 +29,10 @@ export async function createApp(config) {
   validatePage(existing.published, registry);
   const auth = createAuth({ hash: config.passwordHash, secret: config.sessionSecret, secure: publicOrigin.startsWith('https:'), basePath });
   const loginAttempts = new Map();
+  const media = new MediaStore(dataDirectory);
+  const weather = weatherProvider(config.externalFetch);
+  const visitors = new Visitors(dataDirectory, config.sessionSecret, config.externalFetch);
+  let mediaUploads = 0;
   const readHistory = historyReader(config.historyFile || (config.statusFile ? path.join(path.dirname(config.statusFile), 'history.sqlite') : null));
   const index = (await readFile(path.join(root, 'web/index.html'), 'utf8')).replaceAll('__BASE__', `${basePath}/`);
   const catalog = privateAccess => ({ modules: [...registry.values()].filter(module => privateAccess || !module.meta.privateOnly).map(module => ({ ...module.meta, entry: `modules/${module.meta.id}/${module.entry}` })) });
@@ -65,7 +72,7 @@ export async function createApp(config) {
     response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     response.setHeader('X-Frame-Options', 'DENY');
     response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; media-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     try {
       const url = new URL(request.url, publicOrigin);
       if (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) return json(response, 404, { error: 'Not found' });
@@ -74,6 +81,42 @@ export async function createApp(config) {
       if (!['GET', 'HEAD', 'POST', 'PUT'].includes(method)) return json(response, 405, { error: 'Method not allowed' });
       if (['POST', 'PUT'].includes(method) && request.headers.origin !== publicOrigin) return json(response, 403, { error: '请求来源不正确，请从本站编辑台操作。' });
 
+      if (route.startsWith('/api/media/') && ['GET', 'HEAD'].includes(method)) {
+        const name = route.slice('/api/media/'.length);
+        const state = await store.read();
+        if (!auth.authenticated(request) && !mediaReferences(publicPage(state.published, registry)).has(name)) return json(response, 404, { error: 'Not found' });
+        if (await media.serve(name, request, response)) return;
+        return json(response, 404, { error: 'Not found' });
+      }
+      if (route === '/api/weather' && method === 'GET') {
+        const latitude = url.searchParams.get('latitude'), longitude = url.searchParams.get('longitude');
+        if (!latitude || !longitude) return json(response, 400, { error: '请选择城市。' });
+        const [lat, lon] = coordinates(Number(latitude), Number(longitude));
+        if (!auth.authenticated(request)) {
+          const state = await store.read();
+          const allowed = publicPage(state.published, registry).modules.some(item => item.type === 'weather' && item.data.city && coordinates(item.data.city.latitude, item.data.city.longitude).join(',') === [lat, lon].join(','));
+          if (!allowed) return json(response, 404, { error: '天气模块尚未公开。' });
+        }
+        try { return json(response, 200, await weather.weather(lat, lon)); }
+        catch { return json(response, 503, { error: '天气服务暂时不可用，稍后会自动重试。' }); }
+      }
+      if (['/api/visitors', '/api/visit'].includes(route)) {
+        const state = await store.read();
+        const enabled = publicPage(state.published, registry).modules.some(item => item.type === 'visitors');
+        const owner = auth.authenticated(request);
+        if (route === '/api/visitors' && method === 'GET') {
+          if (!owner && !enabled) return json(response, 404, { error: '访客模块尚未公开。' });
+          return json(response, 200, { ...visitors.read(), enabled });
+        }
+        if (route === '/api/visit' && method === 'POST') {
+          if (enabled && !owner && request.headers.dnt !== '1' && request.headers['sec-gpc'] !== '1') {
+            const ip = String(request.headers['x-forwarded-for'] || request.socket.remoteAddress).split(',').at(-1).trim().replace(/^::ffff:/, '');
+            // The response never waits on regional lookup; no raw IP is persisted.
+            void visitors.record(ip, String(request.headers['user-agent'] || '')).catch(() => {});
+          }
+          response.writeHead(204, { 'Cache-Control': 'no-store' }); return response.end();
+        }
+      }
       if (route === '/api/health' && method === 'GET') return json(response, 200, { ok: true, version: config.version, commit: config.commit });
       if (route === '/api/page' && method === 'GET') {
         const state = await store.read();
@@ -129,6 +172,22 @@ export async function createApp(config) {
       }
       if (route.startsWith('/api/admin/')) {
         if (!auth.authenticated(request)) return json(response, 401, { error: '请先登录编辑台。' });
+        if (route === '/api/admin/cities' && method === 'GET') {
+          const name = url.searchParams.get('name')?.trim();
+          if (!name || name.length < 2 || name.length > 80) return json(response, 400, { error: '请输入 2–80 个字的城市名称。' });
+          try { return json(response, 200, await weather.search(name)); }
+          catch { return json(response, 503, { error: '城市搜索暂时不可用，请稍后重试。' }); }
+        }
+        if (route === '/api/admin/media' && method === 'POST') {
+          if (mediaUploads >= 2) return json(response, 429, { error: '有素材正在上传，请稍后再试。' });
+          mediaUploads++;
+          try {
+            let size = 0; const chunks = [];
+            for await (const chunk of request) { size += chunk.length; if (size > MAX_MEDIA_BYTES) throw Object.assign(new Error('素材最大 20 MB。'), { status: 413 }); chunks.push(chunk); }
+            const state = await store.read();
+            return json(response, 200, await media.save(Buffer.concat(chunks), request.headers['content-type'], mediaReferences([state.draft, state.published])));
+          } finally { mediaUploads--; }
+        }
         if (route === '/api/admin/appearance' && method === 'PUT') {
           const payload = await body(request);
           return json(response, 200, await appearance.save(payload.revision, payload.background));
@@ -187,7 +246,8 @@ export async function createApp(config) {
       else response.end();
     }
   });
-  server.requestTimeout = 15_000;
+  server.on('close', () => visitors.close());
+  server.requestTimeout = 60_000;
   server.headersTimeout = 10_000;
-  return { server, store, registry, appearance };
+  return { server, store, registry, appearance, visitors };
 }

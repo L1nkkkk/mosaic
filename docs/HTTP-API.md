@@ -1,6 +1,6 @@
 # HTTP 接口参考
 
-本文对应 Mosaic 0.8.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
+本文对应 Mosaic 0.9.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
 
 [项目介绍](PROJECT.md) · [模块开发手册](MODULES.md) · [返回 README](../README.md)
 
@@ -244,3 +244,21 @@ state = await requestJSON('admin/publish', 'POST', {
 返回 `{ available, range, start, end, step, points, lastCollectedAt, retainedFrom }`。时间均为 Unix 秒。`points` 按时间升序排列；点格式为 `{ t, count, gap, cpu, memory, rx, tx }`，四项指标为 `{ avg, min, max }` 或 null。CPU / memory 单位为百分比；rx / tx 为字节每秒。`gap` 表示该段含缺测，客户端不应连接跨缺口的曲线；相邻点的时间差也需检查。没有记录时为空数组，不补零。
 
 错误参数返回 400，未登录返回 401；历史文件暂缺、锁定或不可读时返回 `available:false`，当前状态接口仍独立工作。查询只读取数字白名单，服务器按文件更新时间复用每个范围的结果缓存。固定历史区间不自动追加数据；7 天视图只纳入结束时间之前完整采集的汇总桶。
+
+
+## 生活模块接口（0.9）
+
+以下路径相对于 `BASE_PATH`。写请求仍要求同源 Origin，管理请求还需要登录 Cookie。
+
+| 方法与路径 | 权限 / 返回 |
+| --- | --- |
+| `GET /api/admin/cities?name=北京` | 管理员；2～80 字城市名，返回 `{ cities: [{name,region,latitude,longitude}] }`，最多 6 项；上游失败 503。 |
+| `GET /api/weather?latitude=39.9&longitude=116.4` | 主人可预览有效坐标；匿名只可读取已发布、可见 Public 天气模块的坐标（规范化到三位小数），其他坐标 404。缓存 10 分钟，上游失败 503。 |
+| `POST /api/admin/media` | 管理员；原始文件字节，不是 JSON / multipart。Content-Type 为 `image/webp`、`audio/mpeg`、`audio/wav`、`audio/ogg` 或 `audio/flac`。返回 `{url,bytes,type}`；格式错误 400 / 415，文件或配额超限 413，并发上传超限 429。 |
+| `GET /api/media/<sha256>.<ext>` | 主人可预览上传素材；匿名仅可访问被已发布、可见 Public 内容引用的素材，否则 404。支持 HEAD 和单段 Range：206 / 416。所有素材响应 `Cache-Control: no-store`。 |
+| `GET /api/visitors` | 主人可读取；匿名仅在已公开访客模块时可读取，否则 404。返回统计汇总，不返回地址或每日 HMAC 标识。 |
+| `POST /api/visit` | 204；只有公开了访客模块、未登录主人、没有 DNT / GPC 时才采集。地域查询异步完成，不阻塞响应。 |
+
+天气响应：`{available:true,fetchedAt,time,timezone,temperature,feelsLike,humidity,wind,code,isDay,forecast:[{day,code,high,low}]}`。温度为摄氏度、湿度百分比、风速 km/h、天气代码为 WMO；字段未知用 `null`。`time` 是城市当地时间；`fetchedAt` 是服务器获取时间。
+
+访客响应：`{enabled,day,today:{views,visitors},totalViews,started,regionDays:30,regions:[{code,visitors}]}`。日期按 Asia/Shanghai 的日界线，`started` 没有采集时为 null；地区代码 `ZZ` 表示未知，分布按最近 30 天每日独立访客累计，所以同一人不同天可重复计入。只放在 Private 的访客卡不会开启采集，可读到以前累积的统计。缓存、数据保留和第三方查询细节见 README「生活模块」。
