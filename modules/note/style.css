@@ -1,5 +1,5 @@
-.note-module { background:var(--white); border:1px solid var(--line); padding:30px; }
+.note-module { background:var(--white); border:1px solid var(--line); padding:24px; }
 .note-module .eyebrow { color:var(--muted); margin-bottom:14px; }
-.note-module h2 { font-size:22px; line-height:1.5; font-weight:600; overflow-wrap:anywhere; }
-.note-module p { margin-top:16px; color:#697169; font-size:14px; line-height:1.9; white-space:pre-wrap; overflow-wrap:anywhere; }
+.note-module h2 { font-size:18px; line-height:1.5; font-weight:600; overflow-wrap:anywhere; }
+.note-module p { margin-top:16px; color:var(--muted); font-size:14px; line-height:1.9; white-space:pre-wrap; overflow-wrap:anywhere; }
 @container(max-width:400px) { .note-module { padding:24px; } }

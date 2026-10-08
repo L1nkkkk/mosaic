@@ -2,7 +2,7 @@
 
 Mosaic 是用独立模块搭建个人页面的轻量应用。同一份内容可以组成对外展示的 Public 页面，也可以组成只有站点主人能查看的 Private 页面。站点主人在编辑台调整内容、顺序和大小，再决定哪些内容公开。
 
-本文对应 Mosaic 0.5.x。开发一个普通展示模块，推荐使用自己的 `definition.js`、`client.js` 和 `style.css`（旧 `index.js` 继续兼容），不需要修改核心模块列表或拖拽代码。
+本文对应 Mosaic 0.6.x。开发一个普通展示模块，推荐使用自己的 `definition.js`、`client.js` 和 `style.css`（旧 `index.js` 继续兼容），不需要修改核心模块列表或拖拽代码。
 
 [返回 README](../README.md) · [模块开发手册](MODULES.md) · [HTTP 接口参考](HTTP-API.md)
 
@@ -55,6 +55,9 @@ mosaic/
 │   └── shader/              WebGL 尺寸、动画与清理范例
 ├── web/
 │   ├── app.js               页面加载、编辑器、模块渲染与资源刷新
+│   ├── shell.js             共用导航、设备外观偏好与移动端菜单
+│   ├── theme.css            主题变量、应用外壳及响应式样式
+│   ├── assets/              随代码部署的山景背景
 │   ├── runtime.js           持久实例、共享帧调度与资源清理
 │   ├── lab.js               独立模块实验台
 │   ├── ui.js                文本校验、转义、链接和表单工具

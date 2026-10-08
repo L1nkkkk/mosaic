@@ -269,7 +269,7 @@ test('width settings preserve draft/publish isolation, privacy, and content acro
   delete state.draft.modules.find(item => item.type === 'note').layout;
   state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: state.draft } })).value;
   assert.ok(!('layout' in state.draft.modules.find(item => item.type === 'note')));
-  assert.deepEqual((await f.request('/mosaic/api/modules')).value.modules.find(item => item.id === 'note').layout, { span: 6, minWidth: 280 });
+  assert.deepEqual((await f.request('/mosaic/api/modules')).value.modules.find(item => item.id === 'note').layout, { span: 4, minWidth: 260 });
 });
 
 test('invalid frame settings are rejected without changing saved content', async t => {

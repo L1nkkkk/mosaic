@@ -1,8 +1,8 @@
 @import url('../status.css');
-.server-status-module { background:#fffefa; }
+.server-status-module { background:var(--white); }
 .server-metrics { display:grid; grid-template-columns:1fr 1fr; gap:26px 18px; margin-top:28px; }
 .server-metric { display:flex; flex-direction:column; gap:8px; }
-.server-metric>span { font-size:11px; color:#7b8279; }
-.server-metric>strong { font-size:29px; font-weight:600; letter-spacing:-1px; color:#4856a1; }
-.server-metric>small { font-size:10px; color:#939b8b; }
+.server-metric>span { font-size:11px; color:var(--muted); }
+.server-metric>strong { font-size:29px; font-weight:600; letter-spacing:-1px; color:var(--violet); }
+.server-metric>small { font-size:10px; color:var(--muted); }
 .stale-metrics { opacity:.6; }

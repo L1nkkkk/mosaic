@@ -1,6 +1,6 @@
 # 模块开发手册
 
-本文对应 Mosaic 0.5.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
+本文对应 Mosaic 0.6.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
 
 [项目介绍](PROJECT.md) · [HTTP 接口参考](HTTP-API.md) · [返回 README](../README.md)
 
@@ -447,3 +447,9 @@ Shadow DOM 只隔离样式，不隔离权限。当前模块仍是经维护者审
 - 从零复制：[`examples/live-card`](../examples/live-card/)，最小生命周期模板。
 
 实验台默认模拟数据；可切换成功、失败、空数据或显式读取真实接口。选择模块后能改宽高、外观、字段或 JSON，查看 mounted / active / size / reducedMotion / failed 状态，暂停或重新挂载。显示宽度会受实验台可用空间限制，运行状态里的 size 是实际值。实验台需要登录；它使用与正式页相同的宿主，不额外实现另一套渲染器。
+
+## 11. 明暗主题适配
+
+外壳使用 `web/theme.css` 提供主题颜色，模块仍负责自己的内部样式。优先使用 `--ink`、`--muted`、`--white`、`--paper`、`--line`、`--violet`、`--violet-soft`；状态色使用 `--positive`、`--negative`、`--warning`、`--blue` 及 `--positive-soft` / `--warning-soft`。不要写死白色卡片背景与浅色文字的组合。CSS 变量会自动随明暗切换，Shadow DOM 同样可以继承。
+
+背景图片位于 `web/assets/alpine-dusk.png`，为本项目生成并随镜像分发，不依赖外部图片服务。模块自带照片 / 画布时可保持自己的颜色；例如介绍模块保留暗色封面，使用 `data-own-background` 避免无边框模式擦除图片背景。全站关闭山景只影响应用外壳，不移除模块自己的封面。

@@ -1,7 +1,7 @@
 import { escape, field, fields, text } from '../../web/ui.js';
 
 export const meta = {
-  id: 'note', name: '一则手记', version: 1, description: '放一段近况、一条公告，或一个尚未成形的想法。', layout: { span: 6, minWidth: 280 },
+  id: 'note', name: '一则手记', version: 1, description: '放一段近况、一条公告，或一个尚未成形的想法。', layout: { span: 4, minWidth: 260 },
   defaultData: { label: '', title: '近况', body: '写点最近的事。' },
 };
 export function validate(data = {}) { return { label: text(data.label, 60, '标记'), title: text(data.title, 100, '标题'), body: text(data.body, 3000, '正文') }; }

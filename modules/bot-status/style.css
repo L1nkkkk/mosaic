@@ -1,11 +1,11 @@
 @import url('../status.css');
-.bot-status-module { background:#e8eddf; }
+.bot-status-module { background:var(--sage); }
 .bot-indicators { display:grid; gap:15px; margin-top:26px; }
 .status-indicator { display:flex; justify-content:space-between; gap:14px; font-size:12px; }
-.status-indicator>span { color:#687760; }
+.status-indicator>span { color:var(--muted); }
 .status-indicator strong { display:flex; align-items:center; gap:7px; font-size:11px; font-weight:500; }
 .status-indicator i { width:6px; height:6px; border-radius:50%; background:currentColor; }
-.status-indicator .good { color:#587e46; }
-.status-indicator .bad { color:#ad5b43; }
-.status-indicator .unknown { color:#97916e; }
-.bot-runtime { font-size:10px; color:#8a967e; margin-top:24px; }
+.status-indicator .good { color:var(--positive); }
+.status-indicator .bad { color:var(--negative); }
+.status-indicator .unknown { color:var(--warning); }
+.bot-runtime { font-size:10px; color:var(--muted); margin-top:24px; }

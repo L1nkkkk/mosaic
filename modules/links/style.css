@@ -1,6 +1,6 @@
-.links-module { background:var(--white); border:1px solid var(--line); padding:30px; }
-.links-module h2 { font-size:22px; font-weight:600; line-height:1.5; margin-bottom:12px; overflow-wrap:anywhere; }
-.link-list a { display:flex; align-items:center; gap:16px; padding:16px 0; border-bottom:1px solid var(--line); font-size:14px; color:#697169; }
+.links-module { background:var(--white); border:1px solid var(--line); padding:24px; }
+.links-module h2 { font-size:18px; font-weight:600; line-height:1.5; margin-bottom:12px; overflow-wrap:anywhere; }
+.link-list a { display:flex; align-items:center; gap:16px; padding:16px 0; border-bottom:1px solid var(--line); font-size:14px; color:var(--muted); }
 .link-list a:last-child { border-bottom:0; padding-bottom:0; }
 .link-list a:hover { color:var(--violet); }
 .link-list a>span:first-child { flex:1; overflow-wrap:anywhere; }

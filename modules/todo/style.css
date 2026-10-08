@@ -1,5 +1,5 @@
-.todo-module { padding: clamp(20px, 5cqi, 40px); background: var(--white); border: 1px solid var(--line); border-radius: 9px; }
-.todo-module h2 { margin: 0 0 24px; font-size: clamp(22px, 5cqi, 32px); }
+.todo-module { padding: clamp(20px, 5cqi, 28px); background: var(--white); border: 1px solid var(--line); border-radius: 9px; }
+.todo-module h2 { margin: 0 0 24px; font-size: clamp(18px, 5cqi, 24px); }
 .todo-module ul { list-style: none; margin: 0; padding: 0; }
 .todo-module li { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .todo-module li label { display: flex; align-items: center; gap: 12px; flex: 1; overflow-wrap: anywhere; }

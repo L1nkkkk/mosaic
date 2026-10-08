@@ -1,6 +1,6 @@
 # HTTP 接口参考
 
-本文对应 Mosaic 0.5.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
+本文对应 Mosaic 0.6.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
 
 [项目介绍](PROJECT.md) · [模块开发手册](MODULES.md) · [返回 README](../README.md)
 

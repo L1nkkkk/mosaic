@@ -53,6 +53,27 @@ await withBrowser(async ({ app, base, command, evaluate, waitFor }) => {
   assert.equal(await evaluate(`document.querySelector('.todo-module input[type="checkbox"]').disabled`), true);
   assert.equal(await evaluate(`document.querySelector('.todo-module form').hidden`), true);
   console.log('Private interactions persist; public interactions remain read-only');
+  // The shell filters without disposing live modules and stores appearance locally.
+  await evaluate(`window.searchCanvas = document.querySelector('canvas'); document.querySelector('#toggle-search').click(); document.querySelector('#module-search').value='no-such-module-xyz'; document.querySelector('#module-search').dispatchEvent(new Event('input'));`);
+  assert.equal(await evaluate(`document.querySelectorAll('#public-page>.module-slot:not([hidden])').length`), 0);
+  await evaluate(`document.querySelector('#module-search').value=''; document.querySelector('#module-search').dispatchEvent(new Event('input')); document.querySelector('[data-theme-toggle]').click();`);
+  await settle();
+  assert.equal(await evaluate(`searchCanvas === document.querySelector('canvas')`), true);
+  assert.equal(await evaluate(`document.documentElement.dataset.theme`), 'light');
+  await command('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:false });
+  await settle();
+  assert.equal(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), true);
+  assert.equal(await evaluate(`document.querySelector('.mosaic-sidebar').inert`), true);
+  await evaluate(`document.querySelector('.shell-menu').click()`);
+  assert.equal(await evaluate(`document.querySelector('.mosaic-main').inert && !document.querySelector('.mosaic-sidebar').inert`), true);
+  await evaluate(`document.querySelector('.mosaic-sidebar a').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  assert.equal(await evaluate(`!document.querySelector('.mosaic-main').inert && document.querySelector('.mosaic-sidebar').inert`), true);
+  await command('Emulation.setDeviceMetricsOverride', { width:1440, height:1000, deviceScaleFactor:1, mobile:false });
+  await settle();
+  await evaluate(`document.querySelector('#appearance-settings').click(); document.querySelector('#wallpaper-choice').click(); document.querySelector('#appearance-dialog button').click()`);
+  assert.equal(await evaluate(`document.documentElement.dataset.wallpaper`), 'off');
+  console.log('Shell: search preserves instances, themes work, mobile navigation is accessible and the layout fits');
+
 
   // Exercise lifecycle isolation directly in a real browser, with observable hooks.
   const result = await evaluate(`(async () => {
@@ -93,6 +114,8 @@ await withBrowser(async ({ app, base, command, evaluate, waitFor }) => {
 
   await navigate('/lab');
   await waitFor('document.querySelector("#lab-state")?.textContent.includes("mounted")');
+  assert.equal(await evaluate(`document.documentElement.dataset.theme`), 'light');
+  assert.equal(await evaluate(`document.documentElement.dataset.wallpaper`), 'off');
   const beforeLab = await app.store.read();
   await evaluate(`document.querySelector('.todo-module input[type="checkbox"]').click()`);
   await waitFor(`document.querySelector('.todo-status').textContent === '已更新草稿'`);
