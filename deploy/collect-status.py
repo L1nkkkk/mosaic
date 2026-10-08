@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Publish a small allowlisted snapshot; never export credentials or messages."""
 import argparse
+import importlib.util
+import time
 import datetime
 import hashlib
 import json
@@ -31,22 +33,50 @@ def command(*args):
     return subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL, timeout=8)
 
 
+def history_module():
+    spec = importlib.util.spec_from_file_location('status_history', Path(__file__).with_name('status-history.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def network_status(directory):
+    # Only default-route interfaces: exclude Docker bridges, veth and loopback duplication.
+    interfaces = {row.split()[0] for row in Path('/proc/net/route').read_text().splitlines()[1:] if row.split()[1] == '00000000' and int(row.split()[3], 16) & 2}
+    current = {}
+    for row in Path('/proc/net/dev').read_text().splitlines()[2:]:
+        name, fields = row.split(':', 1)
+        if name.strip() in interfaces:
+            fields = fields.split()
+            current[name.strip()] = [int(fields[0]), int(fields[8])]
+    previous = None
+    try: previous = json.loads((directory / 'network-sample.json').read_text())
+    except (OSError, ValueError): pass
+    boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    at = time.monotonic()
+    result = history_module().rates(current, previous, at, boot)
+    atomic_json(directory / 'network-sample.json', {'interfaces': current, 'boot': boot, 'at': at}, 0o600)
+    return result
+
+
 def server_status(directory):
     counters = [int(value) for value in Path('/proc/stat').read_text().splitlines()[0].split()[1:9]]
     total, idle = sum(counters), counters[3] + counters[4]
     cpu = None
+    boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
     try:
         previous = json.loads((directory / 'cpu-sample.json').read_text())
         elapsed = total - previous['total']
-        if elapsed > 0:
+        if elapsed > 0 and previous.get('boot') == boot:
             cpu = round(max(0, min(100, 100 * (1 - (idle - previous['idle']) / elapsed))), 1)
     except (OSError, ValueError, KeyError):
         pass
-    atomic_json(directory / 'cpu-sample.json', {'total': total, 'idle': idle}, 0o600)
+    atomic_json(directory / 'cpu-sample.json', {'total': total, 'idle': idle, 'boot': boot}, 0o600)
     memory = {line.split(':')[0]: int(line.split()[1]) * 1024 for line in Path('/proc/meminfo').read_text().splitlines() if line.split(':')[0] in ('MemTotal', 'MemAvailable')}
     disk = shutil.disk_usage('/')
     return {
         'cpuPercent': cpu, 'cpuCount': os.cpu_count(),
+        'network': network_status(directory),
         'uptimeSeconds': int(float(Path('/proc/uptime').read_text().split()[0])),
         'memory': {'total': memory['MemTotal'], 'used': memory['MemTotal'] - memory['MemAvailable'], 'available': memory['MemAvailable']},
         'disk': {'total': disk.total, 'used': disk.used, 'available': disk.free},
@@ -124,9 +154,14 @@ def main():
     directory.mkdir(parents=True, exist_ok=True, mode=0o755)
     try: server = server_status(directory)
     except Exception: server = None
+    collected_at = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        history_module().record(directory / 'history.sqlite', int(collected_at.timestamp()), server)
+    except Exception:
+        print('History collection unavailable', flush=True)
     try: bot = bot_status()
     except Exception: bot = None
-    snapshot = {'schemaVersion': 1, 'collectedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'server': server, 'bot': bot}
+    snapshot = {'schemaVersion': 1, 'collectedAt': collected_at.isoformat(), 'server': server, 'bot': bot}
     atomic_json(directory / 'status.json', snapshot)
 
 

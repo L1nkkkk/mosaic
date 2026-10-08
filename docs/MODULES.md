@@ -1,6 +1,6 @@
 # 模块开发手册
 
-本文对应 Mosaic 0.7.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
+本文对应 Mosaic 0.8.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
 
 [项目介绍](PROJECT.md) · [HTTP 接口参考](HTTP-API.md) · [返回 README](../README.md)
 
@@ -453,3 +453,7 @@ Shadow DOM 只隔离样式，不隔离权限。当前模块仍是经维护者审
 外壳使用 `web/theme.css` 提供主题颜色，模块仍负责自己的内部样式。优先使用 `--ink`、`--muted`、`--white`、`--paper`、`--line`、`--violet`、`--violet-soft`；状态色使用 `--positive`、`--negative`、`--warning`、`--blue` 及 `--positive-soft` / `--warning-soft`。不要写死白色卡片背景与浅色文字的组合。CSS 变量会自动随明暗切换，Shadow DOM 同样可以继承。
 
 背景图片位于 `web/assets/alpine-dusk.jpg`，为本项目生成并随镜像分发，不依赖外部图片服务。模块自带照片 / 画布时可保持自己的颜色；例如介绍模块保留暗色封面，使用 `data-own-background` 避免无边框模式擦除图片背景。全站更换或关闭背景只影响应用外壳，不移除模块自己的封面。
+
+## 历史图表模块范例
+
+`modules/server-status/chart.js` 展示 `mount()` 如何持有 SVG、时间窗口与暂停状态：`update()` 更新数值并触发增量历史请求，`setActive()` 暂停屏幕外请求，`resize()` 用实际宽度重绘坐标，`dispose()` 阻止迟到的异步响应。图表没有注册 `frame()`，只在数据或尺寸变化时绘制。时间范围和浏览位置保存在实例中，刷新资源不会丢失；数据保存由服务器采集服务负责。

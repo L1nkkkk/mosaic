@@ -20,7 +20,7 @@ export async function withBrowser(run) {
     const probe = createServer().listen(0, '127.0.0.1'); await once(probe, 'listening');
     const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
     const base = 'http://127.0.0.1:' + port;
-    const app = await createApp({ root, dataDirectory: path.join(temporary, 'data'), basePath: '', publicOrigin: base,
+    const app = await createApp({ root, dataDirectory: path.join(temporary, 'data'), statusFile: path.join(temporary, 'data/status.json'), basePath: '', publicOrigin: base,
       passwordHash: await passwordHash('local-test-only'), sessionSecret: 'local-browser-test-session-secret-only', version: 'test', commit: 'test' });
     server = app.server.listen(port, '127.0.0.1'); await once(server, 'listening');
     const login = await fetch(base + '/api/login', { method: 'POST', headers: { Origin: base, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: 'local-test-only' }) });

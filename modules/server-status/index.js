@@ -1,7 +1,8 @@
+import { mountStatusHistory } from './chart.js';
 import { escape, text } from '../../web/ui.js';
 import { bytes, duration, statusFrame, statusEditor } from '../status-ui.js';
 
-export const meta = { id: 'server-status', name: '服务器状态', version: 1, layout: { span: 6, minWidth: 300 }, privateOnly: true, description: '查看 CPU、内存、磁盘与运行时间，仅自己可见。', defaultData: { title: '服务器状态' } };
+export const meta = { id: 'server-status', name: '服务器状态', version: 1, layout: { span: 6, minWidth: 300 }, privateOnly: true, description: '查看服务器指标及最近 7 天趋势，仅自己可见。', defaultData: { title: '服务器状态' } };
 export function validate(data = {}) { return { title: text(data.title, 100, '标题') }; }
 export async function load({ request }) { return request('private/status'); }
 export const edit = statusEditor;
@@ -14,3 +15,5 @@ export function render(data, resource = {}) {
     return `<div class="server-metrics${stale ? ' stale-metrics' : ''}">${metric('CPU 使用率', typeof server?.cpuPercent === 'number' ? `${server.cpuPercent.toFixed(1)}%` : '—', `${server?.cpuCount ?? '—'} 核心`)}${metric('已用内存', bytes(memory?.used), `共 ${bytes(memory?.total)}`)}${metric('可用磁盘', bytes(disk?.available), `共 ${bytes(disk?.total)}`)}${metric('持续运行', duration(server?.uptimeSeconds), '服务器运行时间')}</div>`;
   } });
 }
+
+export function mount(context) { return mountStatusHistory(context, render); }

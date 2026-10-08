@@ -113,7 +113,7 @@ export const meta = {
 
 ```sh
 sudo install -d -m 755 /usr/local/lib/mosaic /var/lib/mosaic/monitor
-sudo install -m 644 deploy/collect-status.py /usr/local/lib/mosaic/collect-status.py
+sudo install -m 644 deploy/collect-status.py deploy/status-history.py /usr/local/lib/mosaic/
 sudo install -m 644 deploy/mosaic-status.service deploy/mosaic-status.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start mosaic-status.service
@@ -168,3 +168,13 @@ sudo docker inspect mosaic --format '{{.State.Health.Status}}'
 手动回退前先停用自动更新，再将当前容器停止、移除并把 `mosaic-previous` 重命名为 `mosaic` 后启动。回退镜像保留当前内容；数据结构发生不兼容变化时，应同时从更新前备份恢复内容。修复 `main` 并发布后再启用更新计时器。
 
 0.5 新增持久实例、实验台、`flow` 排列和 `appearance` 外观字段。切回旧版前恢复更新前备份；旧版不认识新模块类型。编辑台可选择「无边框」，核心去除常见卡片装饰，模块内部响应式布局仍由模块负责。
+
+## 服务器历史趋势（0.8）
+
+服务器状态模块采用任务管理器式布局：CPU、内存、网络数值旁常驻最近 1 小时的小折线图，点击指标切换旁边大图；窄卡片将大图排在下方。小图保持实时，大图可独立暂停和浏览历史。大图范围为最近 1 小时、6 小时、24 小时和 7 天。可暂停实时更新、查看前后区间、回到实时；鼠标或触摸查看数值，键盘左右方向键查看采集点。模块按容器宽度调整图表，隐藏时暂停历史请求和绘制，重新可见时补取数据。没有持续动画循环。
+
+宿主机原有采集服务写入 `/var/lib/mosaic/monitor/history.sqlite`，保留 24 小时约 30 秒的原始记录，以及 7 天的 30 分钟汇总。6 小时视图按 1 分钟、24 小时视图按 5 分钟汇总。平均值绘为曲线，最小 / 最大值绘为细线，保留短时峰值。采集失败、超过 90 秒的采集间隔会标记缺口；网络只统计 IPv4 默认路由网卡的收发字节，首次采样、重启、接口更换或计数器重置时不推算速率。
+
+历史仅保存数字和时间，数据库通过现有 `/status` 挂载只读提供给网页容器；不需要开放端口或安装新依赖。Python 标准库负责写入，固定版本 Node 24 自带 SQLite 负责读取。历史从启用后积累，不生成过去的数据。更新容器不会清空历史；备份时除 DATA_DIR 外，如需保留历史可用 Python `sqlite3.Connection.backup()` 备份此数据库。
+
+首次启用需要同时安装两个采集脚本；只推送网页镜像不会升级宿主机采集脚本。原有状态快照在历史写入失败时仍继续生成。测试：`npm test`、`python3 -m unittest discover -s test -p '*_test.py'`、`npm run test:browser`。

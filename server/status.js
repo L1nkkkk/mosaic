@@ -19,7 +19,7 @@ export async function readStatus(filename) {
       available: true,
       stale: Date.now() - timestamp > 90_000 || timestamp > Date.now() + 10_000,
       collectedAt: new Date(timestamp).toISOString(),
-      server: snapshot.server ? { cpuPercent: number(snapshot.server.cpuPercent), cpuCount: number(snapshot.server.cpuCount), uptimeSeconds: number(snapshot.server.uptimeSeconds), memory: usage(snapshot.server.memory), disk: usage(snapshot.server.disk) } : null,
+      server: snapshot.server ? { cpuPercent: number(snapshot.server.cpuPercent), cpuCount: number(snapshot.server.cpuCount), uptimeSeconds: number(snapshot.server.uptimeSeconds), memory: usage(snapshot.server.memory), disk: usage(snapshot.server.disk), network: { rxBytesPerSecond: number(snapshot.server.network?.rxBytesPerSecond), txBytesPerSecond: number(snapshot.server.network?.txBytesPerSecond) } } : null,
       bot: snapshot.bot ? { astrbot: process(snapshot.bot.astrbot), napcat: process(snapshot.bot.napcat), webuiReachable: boolean(snapshot.bot.webuiReachable), onebotConnected: boolean(snapshot.bot.onebotConnected), qqOnline: boolean(snapshot.bot.qqOnline) } : null,
     };
   } catch { return unavailable; }

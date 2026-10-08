@@ -1,6 +1,6 @@
 # HTTP 接口参考
 
-本文对应 Mosaic 0.7.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
+本文对应 Mosaic 0.8.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
 
 [项目介绍](PROJECT.md) · [模块开发手册](MODULES.md) · [返回 README](../README.md)
 
@@ -30,6 +30,7 @@
 | `GET /api/page` | 否 | 无 | `{ page, publishedAt, version, commit }`，仅已发布且未隐藏的 Public 实例 |
 | `GET /api/private/page` | 是 | 无 | `{ page, revision, updatedAt, version }`，全部已保存草稿 |
 | `PUT /api/private/module` | 是 | `{ revision, id, data }` | `{ page, revision, updatedAt }`，只改指定实例草稿内容 |
+| `GET /api/private/history?range=1h` | 是 | 无 | 限时历史数据，见下方历史说明 |
 | `GET /api/private/status` | 是 | 无 | 状态快照，见第 6 节 |
 | `GET /api/admin/modules` | 是 | 无 | `{ modules: [ModuleMetaWithEntry] }`，包括全部类型 |
 | `GET /api/admin/state` | 是 | 无 | `State`，包括完整草稿和发布版本 |
@@ -231,3 +232,15 @@ state = await requestJSON('admin/publish', 'POST', {
 浏览器上传器接受 ≤ 12 MB 的 JPG / PNG / WebP 原图，转为静态 WebP（最长边 ≤ 1920），必要时进一步压缩。服务器独立检查 512 KiB 上限、WebP 容器、静态类型及尺寸（各边 ≤ 3840，总像素 ≤ 800 万），拒绝 SVG 和远程图片 URL。不应在模块中改写全站背景。
 
 普通静态资源使用 `ETag` 与 `max-age=0, must-revalidate`，未改动返回无正文的 304；上传背景以内容哈希命名并使用一年 immutable 缓存。HTML 与 JSON 接口保持 no-store。磁盘只保留当前及上一张上传背景，历史地址最终可能返回 404。
+
+## 服务器历史接口
+
+`GET /api/private/history` 必须登录，与其他 Private 接口共用权限。仅接受：
+
+- `range`：`1h`（默认）、`6h`、`24h`、`7d`，分别返回 30 / 60 / 300 / 1800 秒粒度。
+- `end`：可选，Unix 秒，固定查看区间的结束时间；限制在最近 7 天至当前时间。省略表示实时滚动。
+- `since`：可选，Unix 秒；增量读取时传最后一个点的时间。接口会再次返回最后一个汇总桶，客户端按 `t` 替换，不能简单 append。
+
+返回 `{ available, range, start, end, step, points, lastCollectedAt, retainedFrom }`。时间均为 Unix 秒。`points` 按时间升序排列；点格式为 `{ t, count, gap, cpu, memory, rx, tx }`，四项指标为 `{ avg, min, max }` 或 null。CPU / memory 单位为百分比；rx / tx 为字节每秒。`gap` 表示该段含缺测，客户端不应连接跨缺口的曲线；相邻点的时间差也需检查。没有记录时为空数组，不补零。
+
+错误参数返回 400，未登录返回 401；历史文件暂缺、锁定或不可读时返回 `available:false`，当前状态接口仍独立工作。查询只读取数字白名单，服务器按文件更新时间复用每个范围的结果缓存。固定历史区间不自动追加数据；7 天视图只纳入结束时间之前完整采集的汇总桶。

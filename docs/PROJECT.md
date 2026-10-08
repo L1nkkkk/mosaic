@@ -2,7 +2,7 @@
 
 Mosaic 是用独立模块搭建个人页面的轻量应用。同一份内容可以组成对外展示的 Public 页面，也可以组成只有站点主人能查看的 Private 页面。站点主人在编辑台调整内容、顺序和大小，再决定哪些内容公开。
 
-本文对应 Mosaic 0.7.x。开发一个普通展示模块，推荐使用自己的 `definition.js`、`client.js` 和 `style.css`（旧 `index.js` 继续兼容），不需要修改核心模块列表或拖拽代码。
+本文对应 Mosaic 0.8.x。开发一个普通展示模块，推荐使用自己的 `definition.js`、`client.js` 和 `style.css`（旧 `index.js` 继续兼容），不需要修改核心模块列表或拖拽代码。
 
 [返回 README](../README.md) · [模块开发手册](MODULES.md) · [HTTP 接口参考](HTTP-API.md)
 
@@ -132,3 +132,5 @@ npm run test:browser  # 需要 Chrome / Chromium
 ## 全站背景
 
 登录后可在「外观设置」上传背景、恢复默认或改为纯色。背景独立于页面草稿和发布状态，保存在 `DATA_DIR/appearance.json` 与 `DATA_DIR/backgrounds/`，访客刷新后同步看到；明暗主题仍是设备偏好。部署备份需要保留整个 DATA_DIR。模块封面由模块自行管理，不随全站背景替换。普通页面只加载当前页使用的模块，编辑台和实验台加载全部模块。
+
+服务器状态模块提供数值旁的常驻小趋势图，以及可切换指标和时间范围的大图。历史采集独立于浏览器，保留 24 小时原始数据和 7 天汇总，详情见 HTTP 接口参考和 README。

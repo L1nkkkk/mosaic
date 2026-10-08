@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { historyReader } from './history.js';
 import { createHash, randomBytes } from 'node:crypto';
 import { AppearanceStore, MAX_BACKGROUND_BYTES } from './appearance.js';
 import { readFile } from 'node:fs/promises';
@@ -25,6 +26,7 @@ export async function createApp(config) {
   validatePage(existing.published, registry);
   const auth = createAuth({ hash: config.passwordHash, secret: config.sessionSecret, secure: publicOrigin.startsWith('https:'), basePath });
   const loginAttempts = new Map();
+  const readHistory = historyReader(config.historyFile || (config.statusFile ? path.join(path.dirname(config.statusFile), 'history.sqlite') : null));
   const index = (await readFile(path.join(root, 'web/index.html'), 'utf8')).replaceAll('__BASE__', `${basePath}/`);
   const catalog = privateAccess => ({ modules: [...registry.values()].filter(module => privateAccess || !module.meta.privateOnly).map(module => ({ ...module.meta, entry: `modules/${module.meta.id}/${module.entry}` })) });
 
@@ -104,6 +106,7 @@ export async function createApp(config) {
       if (route === '/api/logout' && method === 'POST') return json(response, 200, { ok: true }, { 'Set-Cookie': auth.logoutCookie() });
       if (route.startsWith('/api/private/')) {
         if (!auth.authenticated(request)) return json(response, 401, { error: '请先登录私人空间。' });
+        if (route === '/api/private/history' && method === 'GET') return json(response, 200, await readHistory(url.searchParams));
         if (route === '/api/private/proxies' && method === 'GET') return json(response, 200, await readProxies(config.proxyStatusFile));
         if (route === '/api/private/page' && method === 'GET') {
           const state = await store.read();

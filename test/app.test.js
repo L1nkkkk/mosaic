@@ -198,7 +198,7 @@ test('status data and private catalog require authentication, and snapshots are 
   const marker = 'TOKEN-AND-MESSAGE-MUST-NOT-LEAK';
   const snapshot = { schemaVersion: 1, collectedAt: new Date().toISOString(), token: marker, server: { cpuPercent: 8.5, cpuCount: 4, memory: { used: 100, total: 500, available: 400 }, hostname: marker }, bot: { qqOnline: true, onebotConnected: true, astrbot: { running: true, restarts: 0, secret: marker }, messages: [marker] } };
   await writeFile(f.config.statusFile, JSON.stringify(snapshot));
-  for (const route of ['/mosaic/api/private/page', '/mosaic/api/private/status', '/mosaic/api/admin/modules']) assert.equal((await f.request(route)).status, 401);
+  for (const route of ['/mosaic/api/private/page', '/mosaic/api/private/status', '/mosaic/api/private/history', '/mosaic/api/admin/modules']) assert.equal((await f.request(route)).status, 401);
   const cookie = await f.login();
   const status = await f.request('/mosaic/api/private/status', { cookie });
   assert.equal(status.status, 200);
@@ -412,4 +412,13 @@ test('uploaded backgrounds reject unauthorized, oversized or malformed files; st
   assert.equal(cached.status, 304); assert.equal(cached.text, '');
   assert.equal((await f.request('/mosaic/web/app.js', { headers: { 'If-None-Match': first.headers.get('etag') } })).status, 200);
   assert.equal((await f.request('/mosaic/api/background/appearance.json')).status, 404);
+});
+
+
+test('history queries stay private and reject unbounded ranges', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  assert.equal((await f.request('/mosaic/api/private/history?range=7d')).status, 401);
+  assert.equal((await f.request('/mosaic/api/private/history?range=all', { cookie })).status, 400);
+  const result = await f.request('/mosaic/api/private/history?range=1h', { cookie });
+  assert.equal(result.status, 200); assert.equal(result.value.available, false);
 });
