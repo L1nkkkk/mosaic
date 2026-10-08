@@ -1,9 +1,8 @@
 import { mountShell, pageHeader } from './shell.js';
 import { createModuleHost } from './runtime.js';
-import { openLab } from './lab.js';
 import { escape, field } from './ui.js';
 import { normalizeLayout, normalizeLayoutOverride, observeModuleLayout, sizeModuleFrame } from './layout.js';
-import { attachLayoutEditor, reorderModules } from './arrange.js';
+let attachLayoutEditor, reorderModules;
 
 const app = document.querySelector('#app');
 const definitions = new Map();
@@ -41,7 +40,7 @@ async function saveModule(id, data, baseData) {
       renderPage(privateState.page, document.querySelector('#private-page'), 'private');
       return structuredClone(privateState.page.modules.find(item => item.id === id).data);
     } catch (error) {
-      if (error.status === 409) { privateState = await api('private/page'); renderPage(privateState.page, document.querySelector('#private-page'), 'private'); }
+      if (error.status === 409) { privateState = await api('private/page'); await ensureModules(privateState.page); renderPage(privateState.page, document.querySelector('#private-page'), 'private'); }
       throw error;
     }
   });
@@ -71,9 +70,16 @@ async function api(route, options = {}) {
   return value;
 }
 
-async function loadModules(privateAccess = false) {
-  catalog = (await api(privateAccess ? 'admin/modules' : 'modules')).modules;
-  await Promise.all(catalog.map(async meta => {
+async function loadModules(privateAccess = false, pageRequest) {
+  const [metadata, result] = await Promise.all([api(privateAccess ? 'admin/modules' : 'modules'), pageRequest]);
+  catalog = metadata.modules;
+  await ensureModules(result?.page);
+  return result;
+}
+
+async function ensureModules(page) {
+  const types = page && new Set(page.modules.map(item => item.type));
+  await Promise.all(catalog.filter(meta => (!types || types.has(meta.id)) && !definitions.has(meta.id)).map(async meta => {
     try {
       const module = await import(new URL(meta.entry, document.baseURI));
       if (typeof module.edit !== 'function' || (typeof module.mount !== 'function' && typeof module.render !== 'function')) throw new Error('Invalid browser module contract');
@@ -197,10 +203,11 @@ function bindSearch(audience) {
 }
 
 async function showPublic() {
-  const { page } = await api('page');
+  const { page } = await loadModules(false, api('page'));
   document.title = page.title;
   app.innerHTML = `<div class="public-shell">${pageHeader({ title: page.title })}<main id="main"><div class="page-grid" id="public-page"></div></main>${footer()}</div>`;
   mountShell(app, 'public'); readerPage = page; bindSearch('public');
+  renderPage(page, document.querySelector('#public-page'));
   await refreshResources(page);
   renderPage(page, document.querySelector('#public-page'));
   startRefresh(async () => { await refreshResources(page); renderPage(page, document.querySelector('#public-page')); });
@@ -220,7 +227,6 @@ function showLogin() {
     button.disabled = true;
     try {
       await api('login', { method: 'POST', body: JSON.stringify({ password: new FormData(event.target).get('password') }) });
-      await loadModules(true);
       if (laboratory) await showLab(); else if (editing) await loadEditor(); else await showPrivate();
     } catch (error) { document.querySelector('#login-error').textContent = error.message; }
     finally { button.disabled = false; }
@@ -233,7 +239,7 @@ async function logout() {
 }
 
 async function showPrivate() {
-  const first = await api('private/page');
+  const first = await loadModules(true, api('private/page'));
   privateState = first;
   document.title = '私人空间 · Mosaic';
   app.innerHTML = `<div class="public-shell private-shell">${pageHeader({ privateView: true, title: first.page.title })}<main id="main"><div class="private-heading"><span>全部模块 <span class="private-scope">· 仅自己可见</span></span><div><button class="text-button" id="refresh-private">刷新状态 ↻</button><button class="text-button" id="private-logout">退出登录</button></div></div><div class="page-grid" id="private-page"></div></main>${footer()}</div>`;
@@ -247,6 +253,8 @@ async function showPrivate() {
       const incoming = initial || await api('private/page');
       if (!privateState || incoming.revision >= privateState.revision) privateState = incoming;
       readerPage = privateState.page;
+      await ensureModules(privateState.page);
+      renderPage(privateState.page, document.querySelector('#private-page'), 'private');
       await refreshResources(privateState.page);
       renderPage(privateState.page, document.querySelector('#private-page'), 'private');
     } finally { refreshing = false; }
@@ -421,6 +429,8 @@ async function save(publish = false) {
 }
 
 async function loadEditor() {
+  await loadModules(true);
+  ({ attachLayoutEditor, reorderModules } = await import('./arrange.js'));
   layoutEditor?.destroy(); layoutEditor = undefined;
   state = await api('admin/state'); dirty = false; selected = state.draft.modules[0]?.id;
   previewAudience = 'private';
@@ -460,7 +470,7 @@ async function loadEditor() {
   startRefresh(async () => { await refreshResources(state.draft); updatePreview(); });
 }
 
-async function showLab() { disposeModules(); await openLab({ app, catalog, definitions, request: api }); mountShell(app, 'lab'); }
+async function showLab() { await loadModules(true); const { openLab } = await import('./lab.js'); disposeModules(); await openLab({ app, catalog, definitions, request: api }); mountShell(app, 'lab'); }
 
 window.addEventListener('pagehide', disposeModules);
 window.addEventListener('beforeunload', event => { if (dirty) { event.preventDefault(); event.returnValue = ''; } });
@@ -470,10 +480,9 @@ try {
   if (privateArea) {
     const session = await api('session');
     if (session.authenticated) {
-      await loadModules(true);
       if (laboratory) await showLab(); else if (editing) await loadEditor(); else await showPrivate();
     } else showLogin();
-  } else { await loadModules(); await showPublic(); }
+  } else { await showPublic(); }
 } catch (error) {
   app.innerHTML = `<main class="loading-shell"><img src="web/mark.svg" width="42" height="42" alt=""><h1>页面加载失败</h1><p>${escape(error.message)}</p><button class="button primary" id="retry">重新载入</button></main>`;
   document.querySelector('#retry').onclick = () => location.reload();

@@ -27,8 +27,8 @@ async function fixture(t) {
   async function stop() { if (app?.server.listening) { app.server.closeAllConnections(); await new Promise(resolve => app.server.close(resolve)); } }
   await start();
   t.after(async () => { await stop(); await rm(directory, { recursive: true, force: true }); });
-  async function request(route, { method = 'GET', body, cookie, requestOrigin = origin } = {}) {
-    const response = await fetch(`${address}${route}`, { method, headers: { 'Content-Type': 'application/json', Origin: requestOrigin, ...(cookie ? { Cookie: cookie } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  async function request(route, { method = 'GET', body, cookie, requestOrigin = origin, headers = {}, binary } = {}) {
+    const response = await fetch(`${address}${route}`, { method, headers: { 'Content-Type': 'application/json', Origin: requestOrigin, ...(cookie ? { Cookie: cookie } : {}), ...headers }, ...(binary ? { body: binary } : body === undefined ? {} : { body: JSON.stringify(body) }) });
     const content = await response.text();
     return { status: response.status, headers: response.headers, text: content, value: response.headers.get('content-type')?.includes('application/json') ? JSON.parse(content) : null };
   }
@@ -375,4 +375,41 @@ test('page flow and module appearance survive publishing while invalid modes fai
   assert.equal(catalog.find(meta => meta.id === 'todo').entry, 'modules/todo/client.js');
   assert.equal(catalog.find(meta => meta.id === 'note').entry, 'modules/note/index.js');
   assert.equal((await f.request('/mosaic/lab')).status, 200);
+});
+
+
+test('site backgrounds are owner-only, revision checked, persistent and independent of page content', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  const content = await readFile(path.join(f.directory, 'content.json'), 'utf8');
+  const put = (revision, background, overrides = {}) => f.request('/mosaic/api/admin/appearance', { method: 'PUT', cookie, body: { revision, background }, ...overrides });
+  assert.equal((await f.request('/mosaic/api/appearance')).value.background, 'default');
+  assert.equal((await put(0, 'none', { cookie: undefined })).status, 401);
+  assert.equal((await put(0, 'none', { requestOrigin: 'https://other.test' })).status, 403);
+  assert.equal((await put(0, 'https://elsewhere.test/picture')).status, 400);
+  assert.equal((await put(0, 'none')).status, 200);
+  assert.equal((await put(0, 'default')).status, 409);
+  await f.restart();
+  assert.deepEqual((await f.request('/mosaic/api/appearance')).value, { revision: 1, background: 'none', backgroundUrl: null });
+  assert.match((await f.request('/mosaic/')).text, /--wallpaper-image:none/);
+  assert.equal((await put(1, 'default')).status, 200);
+  assert.equal(await readFile(path.join(f.directory, 'content.json'), 'utf8'), content);
+  await f.stop();
+  await writeFile(path.join(f.directory, 'appearance.json'), '{"revision":2,"background":"../../secret"}');
+  await assert.rejects(createApp(f.config), /Invalid saved appearance/);
+});
+
+test('uploaded backgrounds reject unauthorized, oversized or malformed files; static responses revalidate', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  const upload = (binary, overrides = {}) => f.request('/mosaic/api/admin/background?revision=0', { method: 'PUT', cookie, binary, headers: { 'Content-Type': 'image/webp' }, ...overrides });
+  assert.equal((await upload(Buffer.from('bad'), { cookie: undefined })).status, 401);
+  assert.equal((await upload(Buffer.from('bad'))).status, 400);
+  assert.equal((await upload(Buffer.alloc(512 * 1024 + 1))).status, 413);
+  assert.equal((await upload(Buffer.from('<svg/>'), { headers: { 'Content-Type': 'image/svg+xml' } })).status, 415);
+  assert.equal((await f.request('/mosaic/api/appearance')).value.revision, 0);
+  const first = await f.request('/mosaic/web/assets/alpine-dusk.jpg');
+  assert.equal(first.status, 200);
+  const cached = await f.request('/mosaic/web/assets/alpine-dusk.jpg', { headers: { 'If-None-Match': first.headers.get('etag') } });
+  assert.equal(cached.status, 304); assert.equal(cached.text, '');
+  assert.equal((await f.request('/mosaic/web/app.js', { headers: { 'If-None-Match': first.headers.get('etag') } })).status, 200);
+  assert.equal((await f.request('/mosaic/api/background/appearance.json')).status, 404);
 });

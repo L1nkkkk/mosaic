@@ -1,5 +1,5 @@
 /* A module-owned cover, distinct from the shared application wallpaper. */
-.intro-module { display:flex; flex-direction:column; justify-content:flex-end; min-height:360px; padding:28px; background:linear-gradient(180deg,#0a162b05 0%,#0a101cba 52%,#0a101cf5),url('../../web/assets/alpine-dusk.png') 38% center/cover; border:1px solid var(--line); color:#f5f3fc; }
+.intro-module { display:flex; flex-direction:column; justify-content:flex-end; min-height:360px; padding:28px; background:linear-gradient(180deg,#0a162b05 0%,#0a101cba 52%,#0a101cf5),url('../../web/assets/alpine-dusk.jpg') 38% center/cover; border:1px solid var(--line); color:#f5f3fc; }
 .intro-module .eyebrow { color:#dbd4ec; margin-bottom:16px; }
 .intro-module h1 { font-family:Georgia,'Songti SC',serif; font-size:clamp(27px,7.5cqi,42px); font-weight:500; line-height:1.25; letter-spacing:-.8px; white-space:pre-line; overflow-wrap:anywhere; }
 .intro-module p { margin-top:18px; font-size:13px; line-height:1.9; color:#d6d7e6; white-space:pre-wrap; }

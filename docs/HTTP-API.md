@@ -1,6 +1,6 @@
 # HTTP 接口参考
 
-本文对应 Mosaic 0.6.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
+本文对应 Mosaic 0.7.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
 
 [项目介绍](PROJECT.md) · [模块开发手册](MODULES.md) · [返回 README](../README.md)
 
@@ -8,9 +8,9 @@
 
 以下路径相对于 `BASE_PATH`。本地默认是 `/api/page`；部署前缀为 `/mosaic` 时是 `/mosaic/api/page`。`PUBLIC_ORIGIN` 只含协议、域名和可选端口，例如 `http://localhost:3000`，不含 `/mosaic`。
 
-- 接口返回 JSON，带 `Cache-Control: no-store`。
+- 除背景图片外，接口返回 JSON，带 `Cache-Control: no-store`。
 - 登录后使用 `mosaic_session` Cookie，没有独立的 Bearer Token / API Key 接口。会话有效期 12 小时，Cookie 为 HttpOnly、SameSite=Strict，HTTPS 下加 Secure。
-- 所有 POST / PUT 请求都必须带与 `PUBLIC_ORIGIN` 完全相同的 `Origin`。有请求体的接口使用 `Content-Type: application/json`，请求体为 JSON 对象，最多 128 KiB。
+- 所有 POST / PUT 请求都必须带与 `PUBLIC_ORIGIN` 完全相同的 `Origin`。除二进制背景上传外，有请求体的接口使用 `Content-Type: application/json`，请求体为 JSON 对象，最多 128 KiB。
 - 浏览器在同源环境中自动管理 `Origin` 和 Cookie；不要把管理密码或会话写入模块代码。
 - 错误通常为 `{ "error": "可显示的错误说明" }`。
 
@@ -19,6 +19,10 @@
 | 方法与路径 | 需要登录 | 请求体 | 成功返回 |
 | --- | --- | --- | --- |
 | `GET /api/health` | 否 | 无 | `{ ok, version, commit }` |
+| `GET /api/appearance` | 否 | 无 | `{ revision, background, backgroundUrl }` |
+| `GET /api/background/:hash.webp` | 否 | 无 | 公开的 WebP 图片；支持 HEAD、ETag、长期缓存 |
+| `PUT /api/admin/appearance` | 是 | `{ revision, background: "default" 或 "none" }` | 更新后的外观设置 |
+| `PUT /api/admin/background?revision=N` | 是 | `Content-Type: image/webp`，二进制静态图片 ≤ 512 KiB | 更新后的外观设置 |
 | `GET /api/session` | 否 | 无 | `{ authenticated }` |
 | `POST /api/login` | 否 | `{ password }` | `{ ok: true }` 并设置会话 Cookie |
 | `POST /api/logout` | 否 | 可发送 `{}` | `{ ok: true }` 并清除当前 Cookie |
@@ -217,3 +221,13 @@ state = await requestJSON('admin/publish', 'POST', {
 `PUT /api/private/module` 仅接受已登录、同源请求，使用整个内容文件的 `revision` 做乐观并发检查。查找草稿中的 `id`，用该类型的 `validate(data)` 校验并替换完整 `data`，不修改范围、尺寸、顺序或发布版本。多余的请求字段不参与更新；找不到实例返回 404，版本冲突返回 409，数据校验失败返回 400。草稿 JSON 超过 120 KiB 返回 413，为完整保存请求保留包装空间。
 
 模块作者应使用 `await context.save(nextData)`，不要绕过核心直接调用这个接口。它根据当前页面区分本地编辑草稿、服务器草稿、实验草稿和只读状态。成功返回规范化后的 `data`；失败抛出错误。私人页遇到 409 会读取最新草稿并提示本次操作失败，不自动重放覆盖。编辑台保持原有冲突处理，保留未保存改动供人工合并。
+
+## 全站背景与缓存
+
+外观设置的 revision 与页面 State.revision 独立。旧版本写入返回 409，前端应重新读取 `/api/appearance` 并让用户重新选择。未登录写入返回 401；其他来源写入返回 403。背景更改立即生效，不经过草稿发布，也不更改页面数据。
+
+`background` 为 `default`、`none` 或 64 位 SHA-256 哈希加 `.webp`；`backgroundUrl` 为相对于站点基础路径的地址，无背景时为 null。HTML 直接带有当前背景样式，避免先下载默认图再替换。配置错误或当前背景损坏会使启动预检失败，原数据保留。
+
+浏览器上传器接受 ≤ 12 MB 的 JPG / PNG / WebP 原图，转为静态 WebP（最长边 ≤ 1920），必要时进一步压缩。服务器独立检查 512 KiB 上限、WebP 容器、静态类型及尺寸（各边 ≤ 3840，总像素 ≤ 800 万），拒绝 SVG 和远程图片 URL。不应在模块中改写全站背景。
+
+普通静态资源使用 `ETag` 与 `max-age=0, must-revalidate`，未改动返回无正文的 304；上传背景以内容哈希命名并使用一年 immutable 缓存。HTML 与 JSON 接口保持 no-store。磁盘只保留当前及上一张上传背景，历史地址最终可能返回 404。
