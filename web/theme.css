@@ -200,3 +200,5 @@ dialog { backdrop-filter: blur(24px); }
 #background-file { max-width: 100%; font-size: 13px; }
 .background-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 #background-status { min-height: 2.5em; }
+
+.mosaic-layout.view-public { --sidebar-width: 0px; }

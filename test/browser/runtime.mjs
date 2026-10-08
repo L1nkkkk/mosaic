@@ -60,6 +60,9 @@ await withBrowser(async ({ app, base, command, evaluate, waitFor }) => {
   await settle();
   assert.equal(await evaluate(`searchCanvas === document.querySelector('canvas')`), true);
   assert.equal(await evaluate(`document.documentElement.dataset.theme`), 'light');
+  assert.equal(await evaluate(`Boolean(document.querySelector('.mosaic-sidebar,.shell-menu,a[href="private"],a[href="edit"],a[href="lab"],#appearance-settings'))`), false);
+  await navigate('/private');
+  await waitFor('document.querySelector("#private-page .todo-module") && window.refreshForTest');
   await command('Emulation.setDeviceMetricsOverride', { width:390, height:844, deviceScaleFactor:1, mobile:false });
   await settle();
   assert.equal(await evaluate(`document.documentElement.scrollWidth <= innerWidth`), true);

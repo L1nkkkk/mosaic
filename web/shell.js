@@ -26,13 +26,22 @@ function setTheme(theme) {
 setTheme(preference('mosaic-theme', 'dark') === 'light' ? 'light' : 'dark');
 
 export function pageHeader({ privateView = false, title }) {
-  return `<header class="dashboard-header"><div class="dashboard-top"><button class="shell-menu icon-button" type="button" aria-label="打开导航" aria-expanded="false">${icon('menu')}</button><nav class="space-tabs" aria-label="页面范围"><a href="./" ${!privateView ? 'aria-current="page"' : ''}>公开空间</a><a href="private" ${privateView ? 'aria-current="page"' : ''}>私人空间</a></nav><div class="dashboard-actions"><button id="toggle-search" class="icon-button" aria-label="搜索当前页面模块" aria-expanded="false">${icon('search')}</button><button class="icon-button" data-theme-toggle></button><a class="button primary small" href="edit">${icon('edit')}<span>编辑页面</span></a></div></div><div class="dashboard-intro"><div><span class="space-kicker">${privateView ? 'MY SPACE / 我的空间' : 'A LITTLE WORLD OF MY OWN'}</span><h1>${escape(title)}</h1></div></div><div class="dashboard-search" hidden><label for="module-search">搜索模块</label><input id="module-search" type="search" autocomplete="off" placeholder="输入标题或内容…"><span id="search-status" role="status"></span></div></header>`;
+  return `<header class="dashboard-header"><div class="dashboard-top">${privateView ? `<button class="shell-menu icon-button" type="button" aria-label="打开导航" aria-expanded="false">${icon('menu')}</button>` : ''}<nav class="space-tabs" aria-label="页面范围"><a href="./" ${!privateView ? 'aria-current="page"' : ''}>公开空间</a>${privateView ? '<a href="private" aria-current="page">私人空间</a>' : ''}</nav><div class="dashboard-actions"><button id="toggle-search" class="icon-button" aria-label="搜索当前页面模块" aria-expanded="false">${icon('search')}</button><button class="icon-button" data-theme-toggle></button>${privateView ? `<a class="button primary small" href="edit">${icon('edit')}<span>编辑页面</span></a>` : ''}</div></div><div class="dashboard-intro"><div><span class="space-kicker">${privateView ? 'MY SPACE / 我的空间' : 'A LITTLE WORLD OF MY OWN'}</span><h1>${escape(title)}</h1></div></div><div class="dashboard-search" hidden><label for="module-search">搜索模块</label><input id="module-search" type="search" autocomplete="off" placeholder="输入标题或内容…"><span id="search-status" role="status"></span></div></header>`;
 }
 
 export function mountShell(app, active) {
   const content = app.firstElementChild;
   content.classList.add('mosaic-main');
   const layout = document.createElement('div'); layout.className = `mosaic-layout view-${active}`;
+  const bindTheme = () => {
+    app.querySelectorAll('[data-theme-toggle]').forEach(button => { button.onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); });
+    setTheme(document.documentElement.dataset.theme);
+  };
+  // Public is always a visitor view, including when the owner is signed in.
+  if (active === 'public') {
+    layout.append(content); app.append(layout); bindTheme();
+    return;
+  }
   const navigation = [['public', './', 'home', '主页'], ['private', 'private', 'grid', '我的页面'], ['edit', 'edit', 'edit', '编辑台'], ['lab', 'lab', 'lab', '模块实验台']];
   const sidebar = document.createElement('aside'); sidebar.className = 'mosaic-sidebar'; sidebar.id = 'mosaic-navigation';
   sidebar.innerHTML = `<nav aria-label="主导航">${navigation.map(([id, href, glyph, label]) => `<a href="${href}" ${id === active ? 'aria-current="page"' : ''}>${icon(glyph)}<span>${label}</span></a>`).join('')}<button type="button" id="appearance-settings">${icon('settings')}<span>外观设置</span></button></nav>`;
@@ -63,8 +72,7 @@ export function mountShell(app, active) {
   // App views can be replaced after login; no global listeners retain an old shell.
   isMobile.onchange = () => { if (!layout.isConnected) { isMobile.onchange = null; return; } closeNavigation(); };
   syncNavigation();
-  app.querySelectorAll('[data-theme-toggle]').forEach(button => { button.onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); });
-  setTheme(document.documentElement.dataset.theme);
+  bindTheme();
   sidebar.querySelector('#appearance-settings').onclick = async () => {
     const { openAppearance } = await import('./appearance.js');
     await openAppearance(layout, setTheme);

@@ -6,10 +6,13 @@ await withBrowser(async ({ app, base, command, evaluate, waitFor }) => {
   const original = await app.store.read();
   if (process.env.MOSAIC_REVIEW_DIR) await mkdir(process.env.MOSAIC_REVIEW_DIR, { recursive: true });
   await command('Page.navigate', { url: base + '/' });
-  await waitFor('document.querySelector("#appearance-settings")');
+  await waitFor('document.querySelector("#public-page .module-slot")');
   assert.equal(await evaluate('Boolean(document.querySelector(".sidebar-brand,.sidebar-note,.dashboard-intro>p"))'), false);
   const loaded = await evaluate("performance.getEntriesByType('resource').map(row=>row.name)");
   for (const unused of ['/modules/server-status/', '/modules/bot-status/', '/web/lab.js', '/web/arrange.js']) assert.ok(!loaded.some(url => url.includes(unused)), `Reader should not load ${unused}`);
+  assert.equal(await evaluate('Boolean(document.querySelector(".mosaic-sidebar,.shell-menu,#appearance-settings,a[href=private],a[href=edit],a[href=lab]"))'), false);
+  await command('Page.navigate', { url: base + '/private' });
+  await waitFor('document.querySelector("#appearance-settings")');
   await evaluate("document.querySelector('#appearance-settings').click()");
   await waitFor("document.querySelector('#background-controls')?.disabled === false");
   if (process.env.MOSAIC_REVIEW_DIR) await writeFile(process.env.MOSAIC_REVIEW_DIR + '/settings.png', Buffer.from((await command('Page.captureScreenshot')).data, 'base64'));
@@ -46,20 +49,17 @@ await withBrowser(async ({ app, base, command, evaluate, waitFor }) => {
   // Anonymous fresh visitors see the persisted background before loading app JS.
   await command('Network.clearBrowserCookies');
   await command('Page.navigate', { url: base + '/' });
-  await waitFor("document.querySelector('#appearance-settings')");
+  await waitFor("document.querySelector('#public-page .module-slot')");
   assert.ok(await evaluate(`getComputedStyle(document.body,'::before').backgroundImage.includes(${JSON.stringify(saved.background)})`));
   assert.equal(await evaluate("performance.getEntriesByType('resource').some(row => row.name.includes('api/appearance'))"), false, 'Initial background should not wait for another API request');
-  await evaluate("document.querySelector('#appearance-settings').click()");
-  await waitFor("document.querySelector('#appearance-login')?.hidden === false");
-  assert.equal(await evaluate("document.querySelector('#background-controls').hidden"), true);
+  assert.equal(await evaluate('Boolean(document.querySelector(".mosaic-sidebar,.shell-menu,#appearance-settings,a[href=private],a[href=edit],a[href=lab]"))'), false);
   assert.deepEqual(await app.store.read(), original);
   if (process.env.MOSAIC_REVIEW_DIR) {
     await mkdir(process.env.MOSAIC_REVIEW_DIR, { recursive: true });
-    await evaluate("document.querySelector('#appearance-dialog button').click()");
     await command('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     await writeFile(process.env.MOSAIC_REVIEW_DIR + '/desktop.png', Buffer.from((await command('Page.captureScreenshot')).data, 'base64'));
     await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
-    await waitFor('document.querySelector(".mosaic-sidebar").getBoundingClientRect().right <= 1');
+    await waitFor('document.querySelector(".mosaic-main").getBoundingClientRect().left === 0');
     assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
     await writeFile(process.env.MOSAIC_REVIEW_DIR + '/mobile.png', Buffer.from((await command('Page.captureScreenshot')).data, 'base64'));
   }
