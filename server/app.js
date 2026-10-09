@@ -14,6 +14,7 @@ import { PageStore, ConflictError } from './store.js';
 import { createAuth } from './auth.js';
 import { readStatus } from './status.js';
 import { readProxies } from './proxies.js';
+import { Games } from './games.js';
 
 const TYPES = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' };
 
@@ -35,6 +36,8 @@ export async function createApp(config) {
   const weather = weatherProvider(config.externalFetch);
   const music = musicProvider(config.externalFetch);
   const visitors = new Visitors(dataDirectory, config.sessionSecret, config.externalFetch);
+  const games = new Games(dataDirectory, config.sessionSecret, config.gameFetch);
+  await games.initialize();
   let mediaUploads = 0;
   const readHistory = historyReader(config.historyFile || (config.statusFile ? path.join(path.dirname(config.statusFile), 'history.sqlite') : null));
   const index = (await readFile(path.join(root, 'web/index.html'), 'utf8')).replaceAll('__BASE__', `${basePath}/`);
@@ -162,6 +165,9 @@ export async function createApp(config) {
       if (route === '/api/logout' && method === 'POST') return json(response, 200, { ok: true }, { 'Set-Cookie': auth.logoutCookie() });
       if (route.startsWith('/api/private/')) {
         if (!auth.authenticated(request)) return json(response, 401, { error: '请先登录私人空间。' });
+        if (route === '/api/private/games' && method === 'GET') return json(response, 200, await games.read());
+        if (route === '/api/private/games/refresh' && method === 'POST') return json(response, 200, await games.read(true));
+        if (route === '/api/private/games/account' && method === 'PUT') return json(response, 200, await games.configure(await body(request)));
         if (route === '/api/private/history' && method === 'GET') return json(response, 200, await readHistory(url.searchParams));
         if (route === '/api/private/proxies' && method === 'GET') return json(response, 200, await readProxies(config.proxyStatusFile));
         if (route === '/api/private/page' && method === 'GET') {

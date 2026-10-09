@@ -270,3 +270,7 @@ state = await requestJSON('admin/publish', 'POST', {
 - `GET /api/music/netease?id=2700386313`：主人可预览；匿名只能请求已发布、可见 Public 音乐模块引用的歌曲 ID，否则 404。返回上述字段以及 `{audio,playable}`。`audio` 是短期的 HTTPS CDN 地址，空字符串表示当前未获取到可用外链。`playable:true` 只说明取得了合规地址，实际浏览器播放仍可能失败，必须处理 `audio.error` 和 `play()` 拒绝。
 
 编号错误为 400，元信息上游失败为 503；元信息成功但外链不可用仍返回 200、`playable:false`。元信息缓存 6 小时，外链结果缓存 60 秒，最多缓存 100 首，各共享每分钟 60 次上游请求限额。没有音频转发代理，没有长期存储播放地址。上传素材的 ACL 不变；网易云外链受平台权限控制，无法由 Mosaic 撤销第三方已发出的链接。
+
+## 私人游戏状态
+
+新增 `GET private/games`、`POST private/games/refresh` 和 `PUT private/games/account`。所有接口要求登录；写入要求同源 Origin。凭据独立加密存储，不包含在页面 API 中。完整请求格式、缓存策略和状态含义见[游戏状态说明](GAMES.md)。

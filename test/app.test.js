@@ -506,3 +506,21 @@ test('NetEase resolution protects private song IDs and allows only published mus
   await f.request('/mosaic/api/admin/draft',{method:'PUT',cookie,body:{revision:state.revision,page:state.draft}});
   assert.equal((await f.request(route)).status,404);
 });
+
+test('game accounts and snapshots require login, same-origin writes and cannot be published', async t => {
+  const f = await fixture(t, { gameFetch: async () => { throw new Error('must not fetch'); } });
+  for (const route of ['/mosaic/api/private/games', '/mosaic/api/private/games/account', '/mosaic/api/private/games/refresh']) {
+    const method = route.endsWith('account') ? 'PUT' : route.endsWith('refresh') ? 'POST' : 'GET';
+    assert.equal((await f.request(route, { method, ...(method === 'GET' ? {} : { body: {} }) })).status, 401);
+  }
+  const cookie = await f.login();
+  assert.equal((await f.request('/mosaic/api/private/games/account', { method: 'PUT', cookie, requestOrigin: 'https://elsewhere.test', body: { provider: 'skland', disconnect: true } })).status, 403);
+  const games = await f.request('/mosaic/api/private/games', { cookie });
+  assert.deepEqual(games.value.games.map(game => game.state), ['unbound','unbound','unbound']);
+  const state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const item = state.draft.modules.find(item => item.type === 'game-status'); assert.ok(item);
+  item.audience = 'public'; item.visible = true;
+  assert.equal((await f.request('/mosaic/api/admin/draft', { cookie, method: 'PUT', body: { revision: state.revision, page: state.draft } })).status, 400);
+  assert.ok(!(await f.request('/mosaic/api/modules')).value.modules.some(item => item.id === 'game-status'));
+  assert.equal((await f.request('/mosaic/data/game-accounts.enc', { cookie })).status, 404);
+});

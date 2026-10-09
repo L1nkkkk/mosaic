@@ -490,3 +490,7 @@ imageElement(img, data.cover, data.title);
 `context.view` 是只读的当前环境：`public`、`private`、`edit` 或 `lab`，默认 `public`。可用于避免在编辑器或实验台自动播放，不作为权限边界；授权仍依赖服务端。旧模块无需修改。
 
 音乐数据增加 `mode`（`sequence / loop / single / shuffle`，默认 `sequence`）与 `autoplay`（布尔值，默认 false）。歌曲增加可选 `neteaseId` 和 `neteaseCover`；本地 `cover` 优先。网易云播放地址有时效，不能写入草稿，按当前歌曲使用 `context.request('music/netease?id=…')` 读取。`generation` 标识切歌请求，丢弃迟到的旧响应；`dispose()` 后的响应同样不应用。`source.js` 负责规范链接、有限模式的选曲规则，播放器保留原生音频节点并处理 `play()` Promise 的拒绝。
+
+## 游戏状态模块
+
+`game-status` 使用分离的定义与客户端入口，默认占满一行；宽度不足时内部三列变为单列。`load()` 读取登录保护的 `private/games`，账号绑定直接调用独立接口，不通过 `change()` 或 `context.save()` 保存凭据。后端 `server/games.js` 管理加密凭据、刷新串行化和错误快照，`server/game-providers.js` 负责固定上游请求及字段规范化。绑定步骤、更新策略和接口见[游戏状态说明](GAMES.md)。
