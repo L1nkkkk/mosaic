@@ -63,6 +63,7 @@ export async function withBrowser(run, options = {}) {
     socket?.close();
     if (chrome) { chrome.kill('SIGTERM'); await once(chrome, 'exit').catch(() => {}); }
     if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
-    await rm(temporary, { recursive: true, force: true });
+    // Chrome subprocesses may briefly finish profile writes after the parent exits.
+    await rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
