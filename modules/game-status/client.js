@@ -1,3 +1,4 @@
+import { qrBinding } from './qr.js';
 import { field, fields } from '../../web/ui.js';
 export { validate } from './definition.js';
 export const load = ({ request }) => request('private/games');
@@ -86,17 +87,21 @@ export function mount(context) {
   refresh.addEventListener('click', () => action(async () => { value = await api('refresh', 'POST'); }), { signal: context.signal });
   const details = el('details', 'games-binding'); details.append(el('summary', '', '账号绑定与管理'));
   details.append(el('p', '', '凭据仅加密保存在本站服务器，不写入页面内容。每个平台绑定一个账号，读取社区默认角色；没有默认角色时使用首个角色。'));
+  const qr = qrBinding({ api, signal: context.signal, onBound: async () => { value = await api('refresh', 'POST'); if (alive) draw(); } });
+  details.append(qr.root);
+  details.addEventListener('toggle', () => { if (!details.open) void qr.close(); }, { signal: context.signal });
+  const manual = el('details', 'games-manual'); manual.append(el('summary', '', '手动绑定与解除绑定')); details.append(manual);
   for (const [provider, label, hint] of [['miyoushe', '米游社', '粘贴已登录米游社的 Cookie；请先开启原神实时便笺。'], ['skland', '森空岛', '粘贴森空岛 Cred；同一账号可读取明日方舟与终末地。']]) {
     const form = el('form', 'games-bind-form'), caption = el('label', '', label), input = el('input'); input.type = 'password'; input.autocomplete = 'off'; input.maxLength = 12000; input.placeholder = provider === 'miyoushe' ? '米游社 Cookie' : '森空岛 Cred'; input.setAttribute('aria-label', input.placeholder);
     caption.append(input);
     const bind = el('button', 'button outline', '绑定 / 更新'), remove = el('button', 'text-button', '解除绑定'); bind.type = 'submit'; remove.type = 'button';
     form.append(caption, bind, remove, el('small', '', hint));
-    form.addEventListener('submit', event => { event.preventDefault(); const credential = input.value; if (!credential.trim()) { status.textContent = '请先输入账号凭据。'; return; } action(async () => { await api('account', 'PUT', { provider, credential }); input.value = ''; value = await api('refresh', 'POST'); }); }, { signal: context.signal });
-    remove.addEventListener('click', () => action(async () => { await api('account', 'PUT', { provider, disconnect: true }); input.value = ''; value = await api('refresh', 'POST'); }), { signal: context.signal });
-    details.append(form);
+    form.addEventListener('submit', event => { event.preventDefault(); const credential = input.value; if (!credential.trim()) { status.textContent = '请先输入账号凭据。'; return; } action(async () => { await qr.close(); await api('account', 'PUT', { provider, credential }); input.value = ''; value = await api('refresh', 'POST'); }); }, { signal: context.signal });
+    remove.addEventListener('click', () => action(async () => { await qr.close(); await api('account', 'PUT', { provider, disconnect: true }); input.value = ''; value = await api('refresh', 'POST'); }), { signal: context.signal });
+    manual.append(form);
   }
   if (context.view !== 'lab') card.append(details);
   else { refresh.disabled = true; status.textContent = '实验台不绑定账号，请在私人页操作。'; }
   const timer = setInterval(() => { if (alive && document.visibilityState !== 'hidden') draw(); }, 30000);
-  return { update(data, resource) { title.textContent = data.title; if (!busy && resource?.value) value = resource.value; if (resource?.error) { status.textContent = '读取失败，请检查登录状态或稍后刷新。'; if (value) value = { ...value, games: value.games.map(game => ({ ...game, stale: !!game.updatedAt, state: 'unavailable' })) }; } draw(); }, dispose() { alive = false; clearInterval(timer); } };
+  return { update(data, resource) { title.textContent = data.title; if (!busy && resource?.value) value = resource.value; if (resource?.error) { status.textContent = '读取失败，请检查登录状态或稍后刷新。'; if (value) value = { ...value, games: value.games.map(game => ({ ...game, stale: !!game.updatedAt, state: 'unavailable' })) }; } draw(); }, dispose() { alive = false; qr.dispose(); clearInterval(timer); } };
 }

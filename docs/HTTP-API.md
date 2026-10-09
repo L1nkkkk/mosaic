@@ -274,3 +274,5 @@ state = await requestJSON('admin/publish', 'POST', {
 ## 私人游戏状态
 
 新增 `GET private/games`、`POST private/games/refresh` 和 `PUT private/games/account`。所有接口要求登录；写入要求同源 Origin。凭据独立加密存储，不包含在页面 API 中。完整请求格式、缓存策略和状态含义见[游戏状态说明](GAMES.md)。
+
+游戏扫码绑定：`POST /api/private/games/qr/start` 接收 `{ provider }`，`POST /api/private/games/qr/status` 与 `/cancel` 接收 `{ id }`。需要管理员会话与同源 Origin，二维码仅在创建响应中返回，查询响应不包含授权凭据。详见 [游戏状态](GAMES.md)。

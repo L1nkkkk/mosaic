@@ -524,3 +524,18 @@ test('game accounts and snapshots require login, same-origin writes and cannot b
   assert.ok(!(await f.request('/mosaic/api/modules')).value.modules.some(item => item.id === 'game-status'));
   assert.equal((await f.request('/mosaic/data/game-accounts.enc', { cookie })).status, 404);
 });
+
+test('QR login endpoints require authentication and same-origin; only safe status is returned', async t => {
+  const { qrFetchFixture } = await import('./fixtures/game-qr.js');
+  const source = qrFetchFixture(), f = await fixture(t, { gameQrFetch: source.fetch });
+  const route = '/mosaic/api/private/games/qr/';
+  for (const action of ['start', 'status', 'cancel']) assert.equal((await f.request(route + action, { method: 'POST', body: { provider: 'miyoushe' } })).status, 401);
+  const cookie = await f.login();
+  assert.equal((await f.request(route + 'start', { method: 'POST', cookie, requestOrigin: 'https://evil.test', body: { provider: 'miyoushe' } })).status, 403);
+  const flow = await f.request(route + 'start', { method: 'POST', cookie, body: { provider: 'miyoushe' } });
+  assert.equal(flow.status, 200); assert.ok(flow.value.qr); assert.match(flow.headers.get('cache-control'), /no-store/);
+  const status = await f.request(route + 'status', { method: 'POST', cookie, body: { id: flow.value.id } });
+  assert.equal(status.value.state, 'waiting'); assert.ok(!status.text.includes('secret-ticket'));
+  await f.request(route + 'cancel', { method: 'POST', cookie, body: { id: flow.value.id } });
+  assert.equal((await f.request(route + 'status', { method: 'POST', cookie, body: { id: flow.value.id } })).status, 400);
+});

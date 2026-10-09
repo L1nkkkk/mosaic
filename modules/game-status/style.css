@@ -17,3 +17,13 @@
 :root[data-theme=light] .games-game[data-game=genshin]{--game-accent:#80642e}
 :root[data-theme=light] .games-game[data-game=arknights]{--game-accent:#08748f}
 :root[data-theme=light] .games-game[data-game=endfield]{--game-accent:#776c12}
+
+.games-qr-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.games-qr-panel { max-width: 420px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; text-align: center; }
+.games-qr-panel[hidden], .games-qr-image[hidden] { display: none; }
+.games-qr-panel strong { display: block; margin-bottom: 16px; }
+.games-qr-image { display: block; width: 224px; max-width: 100%; height: auto; margin: 0 auto; border-radius: 8px; }
+.games-qr-panel p { line-height: 1.6; font-size: 13px; overflow-wrap: anywhere; }
+.games-qr-status { min-height: 24px; }
+.games-manual { margin-top: 20px; }
+.games-manual summary { cursor: pointer; }

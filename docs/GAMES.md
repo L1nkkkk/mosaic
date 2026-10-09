@@ -4,7 +4,11 @@
 
 ## 账号接入
 
-绑定入口位于登录后的私人页，编辑台预览也可操作；实验台不提供账号绑定。此版本使用手动凭据绑定，不要求游戏密码，不提供扫码登录。
+绑定入口位于登录后的私人页，编辑台预览也可操作；实验台不提供账号绑定。优先使用扫码绑定，不要求游戏密码。点击「米游社扫码绑定」或「森空岛扫码绑定」，使用对应 App 扫码并在手机确认。米游社用于原神（需开启实时便笺）；森空岛一次授权读取明日方舟和终末地。二维码在浏览器本地生成，100 秒内有效，可关闭或重新生成。手机浏览可保存二维码后在官方 App 识别；若 App 不支持相册识别，请使用另一台设备显示二维码。
+
+扫码票据仅存在服务器内存，绑定到发起的管理员会话；每个平台最多一个有效流程，每 10 秒可生成一次，轮询间隔至少 2.5 秒。确认后服务端交换查询凭据、验证角色接口，再加密保存；不会向页面返回 Cookie、Cred 或通行证 Token。关闭绑定面板会取消当前流程；解除绑定或手动更新会使该平台旧流程失效。官方接口变更或风控可能导致扫码失败，可重新生成或使用下方备用入口。
+
+「手动绑定与解除绑定」保留以下操作：
 
 - **米游社**：登录自己的米游社网页并开启原神实时便笺。在浏览器开发者工具的 Network（网络）面板找到发往米游社官方接口的已登录请求，复制请求头中的 Cookie 值到模块「米游社 Cookie」。不需要复制整条请求或 `Cookie:` 字段名。Cookie 可使用性由实际角色接口验证；凭据失效或需要验证时，回到官方社区完成登录、验证，再更新绑定。
 - **森空岛**：登录自己的森空岛网页并打开游戏数据页面。在 Network 面板找到发往 `zonai.skland.com` 的游戏数据请求，复制请求头中的 `cred` 值到模块「森空岛 Cred」。这里接收的是 Cred，不是鹰角通行证 Token。服务端用 Cred 获取短期签名 Token；Cred 失效后需要重新绑定。
@@ -32,10 +36,17 @@
 | --- | --- | --- |
 | `api/private/games` | GET | 三款游戏状态、绑定布尔值、下一次自动刷新时间 |
 | `api/private/games/refresh` | POST | 手动刷新，受服务端冷却限制 |
+| `api/private/games/qr/start` | POST | `{ provider }`，返回本地流程 ID、二维码内容与到期时间 |
+| `api/private/games/qr/status` | POST | `{ id }`，返回 waiting / scanned / bound / expired / error；确认后自动绑定 |
+| `api/private/games/qr/cancel` | POST | `{ id }`，取消当前会话的流程 |
 | `api/private/games/account` | PUT | `{ provider: "miyoushe" 或 "skland", credential }`；解绑为 `{ provider, disconnect: true }` |
 
-所有接口要求管理员会话；写入和手动刷新要求同源 Origin。模块 `privateOnly: true`，服务端禁止公开。服务端仅请求写死的官方 HTTPS 地址，拒绝跳转，单次请求超时 12 秒、响应上限 4 MiB；错误只返回本地固定说明，不转发上游错误或凭据。
+所有接口要求管理员会话；写入和手动刷新要求同源 Origin。模块 `privateOnly: true`，服务端禁止公开。服务端仅请求写死的官方 HTTPS 地址，拒绝跳转，单次请求超时 12 秒、状态响应上限 4 MiB、扫码响应上限 128 KiB；错误只返回本地固定说明，不转发上游错误或凭据。
 
 协议参考（2026-10-09 核对代码）：[genshin.py](https://github.com/seriaati/genshin.py) 的国服 DS 与实时便笺实现；[nonebot-plugin-skland](https://github.com/FrostN0v0/nonebot-plugin-skland) 的请求签名、角色身份、明日方舟及终末地字段。Mosaic 使用自身的 Node 实现，不引入这些项目的运行依赖。
 
 验证：`npm test`、`npm run check`、`npm run test:browser`。游戏专项浏览器测试为 `node test/browser/games.mjs`，使用模拟响应验证绑定、字段展示、转义、刷新冷却、窄屏和解绑；自动化测试不使用真实账号。
+
+扫码协议参考：genshin.py 的 `auth/subclients/app.py`、`utility/auth.py`；nonebot-plugin-skland 的 `api/login.py`。二维码编码器为 [Nayuki QR Code generator](https://www.nayuki.io/page/qr-code-generator-library)，MIT 授权，随代码本地提供。扫码专项测试：`node test/browser/game-qr.mjs`；官方创建及待扫描接口已实测，真实手机确认需要账号持有人完成。
+
+森空岛扫码等待状态依据[鹰角账号中心](https://user.hypergryph.com/)前端实现核对：通用扫码接口 100 为未扫描、101 为等待手机确认、102 为过期。
