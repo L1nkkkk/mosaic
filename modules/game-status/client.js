@@ -56,7 +56,7 @@ export function mount(context) {
     for (const ui of rows) {
       const game = value?.games?.find(item => item.game === ui.game) || { state: 'waiting' };
       const e = game.energy;
-      ui.badge.textContent = game.stale ? '数据待更新' : ({ ready: '已同步', unbound: '未绑定', waiting: '等待同步', auth: '重新绑定', verification: '需要验证', missing: '未找到角色', unavailable: '连接异常' }[game.state] || '暂不可用');
+      ui.badge.textContent = game.stale ? '数据待更新' : ({ ready: '已同步', unbound: '未绑定', waiting: '等待同步', auth: '重新绑定', verification: '需要验证', restricted: '社区风险限制', missing: '未找到角色', unavailable: '连接异常' }[game.state] || '暂不可用');
       ui.row.dataset.state = game.stale ? 'stale' : game.state;
       ui.row.dataset.full = String(!!e && e.current >= e.max && !game.stale);
       ui.player.textContent = game.nickname ? `${game.nickname} · Lv.${number(game.level)}${game.server ? ' · ' + game.server : ''}` : '绑定后读取你的游戏状态';

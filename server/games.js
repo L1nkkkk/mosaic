@@ -67,6 +67,8 @@ export class Games {
       };
       await Promise.all(Object.entries(groups).map(async ([provider, games]) => {
         const credential = this.accounts[provider]; if (!credential) return;
+        // Account-risk responses are not CAPTCHA prompts. Wait for an explicit retry.
+        if (!force && provider === 'miyoushe' && this.results.genshin?.state === 'restricted') return;
         let session;
         try { session = await this.provider.discover(provider, credential); }
         catch (error) { games.forEach(game => fail(game, error)); return; }

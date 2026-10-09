@@ -71,20 +71,38 @@ test('oversized upstream responses are rejected and wrong encryption keys fail e
   assert.equal((await oversized.read()).games[0].state, 'unavailable');
 });
 
-test('Miyoushe dailyNote safety challenges display verification instead of connection failure', async t => {
+test('Miyoushe dailyNote distinguishes account risk from verification challenges', async t => {
   const f = await fixture(t);
   await f.games.configure({ provider: 'miyoushe', credential: 'cookie=test-cookie' });
   const original = f.source.fetch;
   // Match the production chain: successful role lookup, rejected dailyNote.
   const { gameProviders } = await import('../server/game-providers.js');
-  for (const code of [5003, 10041]) {
+  for (const code of [5003, 1034, 10041]) {
     f.games.provider = gameProviders(async (url, options) => url.includes('dailyNote')
       ? new Response(JSON.stringify({ retcode: code, message: 'UPSTREAM-PRIVATE-DETAIL', data: null }))
       : original(url, options));
     f.advance(301000);
-    const game = (await f.games.read()).games.find(item => item.game === 'genshin');
-    assert.equal(game.state, 'verification');
-    assert.match(game.message, /验证/);
+    const game = (await f.games.read(true)).games.find(item => item.game === 'genshin');
+    assert.equal(game.state, code === 5003 ? 'restricted' : 'verification');
+    assert.match(game.message, code === 5003 ? /风险/ : /验证/);
     assert.ok(!game.message.includes('UPSTREAM-PRIVATE-DETAIL'));
   }
+});
+
+test('account risk pauses automatic Miyoushe requests; explicit refresh can recover', async t => {
+  const f = await fixture(t);
+  await f.games.configure({ provider: 'miyoushe', credential: 'cookie=test-cookie' });
+  const { gameProviders } = await import('../server/game-providers.js');
+  let restricted = true, calls = 0;
+  f.games.provider = gameProviders(async (url, options) => {
+    calls++;
+    return restricted && url.includes('dailyNote')
+      ? new Response(JSON.stringify({ retcode: 5003, data: null }))
+      : f.source.fetch(url, options);
+  });
+  assert.equal((await f.games.read()).games[0].state, 'restricted');
+  const count = calls; f.advance(301000);
+  await f.games.read(); assert.equal(calls, count);
+  f.advance(301000); restricted = false;
+  assert.equal((await f.games.read(true)).games[0].state, 'ready');
 });
