@@ -12,3 +12,5 @@
 @keyframes music-spin { to { transform:rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .music-record { animation:none !important; } }
 @container(max-width:300px) { .music-module { padding:18px; }.music-record { width:64px; height:64px; } }
+
+.music-auto { display:flex; align-items:center; gap:10px; margin:0 0 18px; font-size:13px; }.music-auto input { width:18px; height:18px; }.music-import { border:1px solid var(--line); border-radius:10px; padding:16px; margin:22px 0; }.music-import small { display:block; margin-top:12px; color:var(--muted); line-height:1.6; }.music-order { display:flex; gap:8px; margin:14px 0; }.music-bottom { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; }.music-mode { font-size:10px; color:var(--muted); }.music-source { font-size:11px; color:var(--violet); }.music-start { margin-left:auto; }

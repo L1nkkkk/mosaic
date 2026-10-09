@@ -29,7 +29,7 @@ export async function openLab({ app, catalog, definitions, request }) {
   const content = $('.module-content');
   function report(message) { $('#lab-message').textContent = message; }
   function options() {
-    return { id: 'lab-instance', appearance: $('#lab-appearance').value, data, resource, writable: $('#lab-writable').checked,
+    return { id: 'lab-instance', view: 'lab', appearance: $('#lab-appearance').value, data, resource, writable: $('#lab-writable').checked,
       request: route => {
         if ($('#lab-resource').value !== 'live') return Promise.reject(new Error('实验台当前使用模拟数据。'));
         return request(route);

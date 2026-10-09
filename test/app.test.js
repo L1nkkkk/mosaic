@@ -487,3 +487,22 @@ test('visitor collection honors publication, owner sessions, privacy signals and
   await f.restart();
   assert.equal((await f.request('/mosaic/api/visitors')).value.today.visitors, 1);
 });
+
+test('NetEase resolution protects private song IDs and allows only published music', async t => {
+  let calls=0;
+  const f=await fixture(t,{externalFetch:async url=>{calls++;return url.includes('detail')?Response.json({songs:[{id:2700386313,name:'Fixture',artists:[]}]}):new Response(null,{status:302,headers:{Location:'https://m801.music.126.net/fixture.mp3'}});}}),cookie=await f.login();
+  const route='/mosaic/api/music/netease?id=2700386313';
+  assert.equal((await f.request(route)).status,404);assert.equal(calls,0);
+  assert.equal((await f.request('/mosaic/api/admin/netease?id=2700386313')).status,401);
+  assert.equal((await f.request(route,{cookie})).value.title,'Fixture');
+  let state=(await f.request('/mosaic/api/admin/state',{cookie})).value;
+  const item=state.draft.modules.find(m=>m.type==='music');item.visible=true;item.audience='public';item.data.tracks=[{id:'song',audio:'https://music.163.com/song?id=2700386313&uct2=tracking',title:'',artist:'',cover:''}];
+  state=(await f.request('/mosaic/api/admin/draft',{method:'PUT',cookie,body:{revision:state.revision,page:state.draft}})).value;
+  assert.equal((await f.request(route)).status,404);
+  state=(await f.request('/mosaic/api/admin/publish',{method:'POST',cookie,body:{revision:state.revision}})).value;
+  assert.equal((await f.request(route)).status,200);
+  assert.equal((await f.request('/mosaic/api/music/netease?id=2')).status,404);
+  state.draft.modules.find(m=>m.type==='music').audience='private';
+  await f.request('/mosaic/api/admin/draft',{method:'PUT',cookie,body:{revision:state.revision,page:state.draft}});
+  assert.equal((await f.request(route)).status,404);
+});

@@ -2,7 +2,7 @@
 
 Mosaic 是用独立模块搭建个人页面的轻量应用。同一份内容可以组成对外展示的 Public 页面，也可以组成只有站点主人能查看的 Private 页面。站点主人在编辑台直接点击画布上的模块编辑内容、拖动调整顺序和大小，再决定哪些内容公开；模块多时可搜索定位，无需常驻侧栏。
 
-本文对应 Mosaic 0.9.x。开发一个普通展示模块，推荐使用自己的 `definition.js`、`client.js` 和 `style.css`（旧 `index.js` 继续兼容），不需要修改核心模块列表或拖拽代码。
+本文对应 Mosaic 0.10.x。开发一个普通展示模块，推荐使用自己的 `definition.js`、`client.js` 和 `style.css`（旧 `index.js` 继续兼容），不需要修改核心模块列表或拖拽代码。
 
 [返回 README](../README.md) · [模块开发手册](MODULES.md) · [HTTP 接口参考](HTTP-API.md)
 

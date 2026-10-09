@@ -1,0 +1,73 @@
+import assert from 'node:assert/strict';
+import { withBrowser } from './harness.mjs';
+import { mkdir, writeFile } from 'node:fs/promises';
+const externalFetch=async url=>url.includes('/api/song/detail')?Response.json({songs:[{id:2700386313,name:'Somniomancer [null set]',artists:[{name:'塞壬唱片-MSR'},{name:'Crywolf'}],album:{}}]}):new Response(null,{status:302,headers:{Location:'https://music.163.com/404'}});
+await withBrowser(async ({app,base,command,evaluate,waitFor})=>{
+  await command('Page.navigate',{url:base+'/private'});await waitFor('document.querySelector("#private-page")');
+  const audioUrl=await evaluate(`(async()=>{const a=new Uint8Array(44+16000*10),v=new DataView(a.buffer);const text=(i,s)=>[...s].forEach((c,n)=>a[i+n]=c.charCodeAt(0));text(0,'RIFF');v.setUint32(4,a.length-8,true);text(8,'WAVE');text(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,16000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);text(36,'data');v.setUint32(40,a.length-44,true);const r=await fetch('/api/admin/media',{method:'POST',headers:{'Content-Type':'audio/wav'},body:a});return (await r.json()).url})()`);
+  const initial=await app.store.read();
+  const data={title:'音乐测试',autoplay:true,mode:'sequence',tracks:['one','two'].map((id,i)=>({id,title:'歌曲 '+(i+1),artist:'测试音频',audio:audioUrl,cover:''}))};
+  const page={title:'Music',modules:[{id:'music',type:'music',audience:'public',visible:true,layout:{span:6,height:400},data}]};
+  await app.store.mutate(initial.revision,s=>({...s,draft:page,published:structuredClone(page)}));
+  // New navigation with no user activation exercises real autoplay denial.
+  await command('Page.navigate',{url:base+'/'});
+  await waitFor(`document.querySelector('.music-status')?.textContent.includes('浏览器未允许')`);
+  assert.equal(await evaluate(`document.querySelector('audio').paused && !document.querySelector('.music-start').hidden`),true);
+  await evaluate(`window.savedPlayer=document.querySelector('audio');window.savedPlayer.load()`);await waitFor('savedPlayer.readyState>=2');
+  const play=await command('Runtime.evaluate',{expression:'savedPlayer.play().then(()=>true)',userGesture:true,awaitPromise:true,returnByValue:true});assert.equal(play.result.value,true);
+  await evaluate(`savedPlayer.currentTime=3;window.refreshForTest()`);
+  assert.equal(await evaluate(`savedPlayer===document.querySelector('audio') && savedPlayer.currentTime>=3 && !savedPlayer.paused`),true);
+  // Trigger the actual ended path without waiting through a long fixture.
+  await evaluate(`savedPlayer.dispatchEvent(new Event('ended'))`);
+  await waitFor(`document.querySelector('[aria-label="播放列表"]').value==='two' && !savedPlayer.paused`);
+  await evaluate(`savedPlayer.pause();savedPlayer.dispatchEvent(new Event('ended'))`);
+  assert.equal(await evaluate(`document.querySelector('.music-status').textContent`),'歌单已播放完毕');
+  await command('Page.navigate',{url:base+'/edit'});await waitFor('document.querySelector(".music-module")');
+  assert.equal(await evaluate('document.querySelector("audio").paused'),true,'Editor must never autoplay');
+  await evaluate(`document.querySelector('.module-edit-button').click();document.querySelector('[aria-label="后移歌曲 1"]').click()`);
+  assert.equal(await evaluate(`document.querySelector('[aria-label="播放列表"] option').value`),'two');
+  await evaluate(`const input=document.querySelector('[aria-label="网易云歌曲链接"]');input.value='https://music.163.com/song?id=2700386313&uct2=tracking';document.querySelector('.music-import button').click()`);
+  await waitFor(`document.querySelectorAll('[aria-label="播放列表"] option').length===3`);
+  assert.ok(await evaluate(`document.querySelector('#module-fields').textContent.includes('已关联网易云歌曲')`));
+  await evaluate(`const mode=document.querySelector('[aria-label="播放顺序"]');mode.value='loop';mode.dispatchEvent(new Event('change'));document.querySelector('#save-module').click()`);
+  await waitFor('!document.querySelector("#module-editor").open');
+  let saved=await app.store.read();const music=saved.draft.modules[0].data;
+  assert.equal(music.mode,'loop');assert.equal(music.tracks[0].id,'two');assert.equal(music.tracks[2].neteaseId,'2700386313');assert.equal(music.tracks[2].title,'Somniomancer [null set]');assert.ok(!JSON.stringify(music).includes('tracking'));
+  await evaluate(`const list=document.querySelector('[aria-label="播放列表"]');list.value=list.options[2].value;list.dispatchEvent(new Event('change'))`);
+  await waitFor(`document.querySelector('.music-status').textContent.includes('没有可用外链')`);
+  assert.equal(await evaluate(`document.querySelector('.music-source').href`),'https://music.163.com/song?id=2700386313');
+  if(process.env.MOSAIC_REVIEW_DIR){await mkdir(process.env.MOSAIC_REVIEW_DIR,{recursive:true});await writeFile(process.env.MOSAIC_REVIEW_DIR+'/music-unavailable.png',Buffer.from((await command('Page.captureScreenshot')).data,'base64'));}
+  // Direct lifecycle contract: loop/single/shuffle and stale async song requests.
+  const evaluation=await command('Runtime.evaluate',{userGesture:true,awaitPromise:true,returnByValue:true,expression:`(async()=>{
+    const m=await import('/modules/music/client.js');const root=document.createElement('div');document.body.append(root);
+    const pending=new Map();const context={root,view:'edit',request:route=>new Promise(resolve=>pending.set(route,resolve))};const player=m.mount(context);
+    const tracks=[{id:'a',title:'A',artist:'',audio:${JSON.stringify(audioUrl)},cover:''},{id:'b',title:'B',artist:'',audio:${JSON.stringify(audioUrl)},cover:''}];
+    const update=mode=>player.update({title:'Fixture',tracks,mode,autoplay:false});
+    update('loop');const a=root.querySelector('audio'),list=root.querySelector('select');
+    const originalPlay=a.play.bind(a);let plays=0;a.play=()=>{plays++;return Promise.resolve()};
+    list.value='b';list.dispatchEvent(new Event('change'));a.dispatchEvent(new Event('ended'));const loop=list.value;
+    update('single');a.currentTime=2;a.dispatchEvent(new Event('ended'));const single={id:list.value,time:a.currentTime};
+    update('shuffle');a.dispatchEvent(new Event('ended'));const shuffle=list.value;
+    const remote=[{id:'r1',neteaseId:'1',audio:'',title:'',artist:'',cover:''},{id:'r2',neteaseId:'2',audio:'',title:'',artist:'',cover:''}];
+    player.update({title:'Remote',tracks:remote});list.value='r2';list.dispatchEvent(new Event('change'));
+    pending.get('music/netease?id=2')({title:'Second response',artist:'',audio:${JSON.stringify(audioUrl)}});await Promise.resolve();
+    pending.get('music/netease?id=1')({title:'Late first response',artist:'',audio:''});await Promise.resolve();
+    const latest=root.querySelector('h3').textContent;
+    a.play=originalPlay;
+    player.update({title:'Async transition',tracks:[tracks[0],{id:'async',neteaseId:'3',audio:'',title:'',artist:'',cover:''}],mode:'sequence',autoplay:false});
+    list.value='a';list.dispatchEvent(new Event('change'));await a.play();a.dispatchEvent(new Event('ended'));
+    await new Promise(resolve=>setTimeout(resolve,100));
+    pending.get('music/netease?id=3')({title:'Next remote song',artist:'',audio:${JSON.stringify(audioUrl)}});
+    for(let i=0;i<50 && a.paused;i++) await new Promise(resolve=>setTimeout(resolve,20));
+    const continued=!a.paused && list.value==='async';
+    player.dispose();root.remove();return{loop,single,shuffle,plays,latest,continued};
+  })()`});
+  assert.ok(!evaluation.exceptionDetails, JSON.stringify(evaluation.exceptionDetails));
+  const result=evaluation.result.value;
+  assert.equal(result.loop,'a');assert.deepEqual(result.single,{id:'a',time:0});assert.equal(result.shuffle,'b');assert.ok(result.plays>=3);assert.equal(result.latest,'Second response');assert.equal(result.continued,true,'Fetching the next song must not lose playing intent to the previous audio pause event');
+  await command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
+  await evaluate(`document.querySelector('.module-edit-button').click()`);
+  assert.equal(await evaluate('document.documentElement.scrollWidth<=innerWidth'),true);
+  if(process.env.MOSAIC_REVIEW_DIR)await writeFile(process.env.MOSAIC_REVIEW_DIR+'/music-settings-mobile.png',Buffer.from((await command('Page.captureScreenshot')).data,'base64'));
+  console.log('Music: real autoplay denial/user play, editor silence, continuous playback, sequence end, loop/single/shuffle, track ordering, share import, unavailable fallback and async race verified');
+},{externalFetch});

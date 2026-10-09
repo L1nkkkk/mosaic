@@ -1,6 +1,6 @@
 # HTTP 接口参考
 
-本文对应 Mosaic 0.9.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
+本文对应 Mosaic 0.10.x，供模块作者理解数据来源，也供维护者接入已有编辑流程。普通模块通过 `edit({ change })` 或生命周期 `context.save()` 更新草稿，不需要自行调用保存接口。
 
 [项目介绍](PROJECT.md) · [模块开发手册](MODULES.md) · [返回 README](../README.md)
 
@@ -262,3 +262,11 @@ state = await requestJSON('admin/publish', 'POST', {
 天气响应：`{available:true,fetchedAt,time,timezone,temperature,feelsLike,humidity,wind,code,isDay,forecast:[{day,code,high,low}]}`。温度为摄氏度、湿度百分比、风速 km/h、天气代码为 WMO；字段未知用 `null`。`time` 是城市当地时间；`fetchedAt` 是服务器获取时间。
 
 访客响应：`{enabled,day,today:{views,visitors},totalViews,started,regionDays:30,regions:[{code,visitors}]}`。日期按 Asia/Shanghai 的日界线，`started` 没有采集时为 null；地区代码 `ZZ` 表示未知，分布按最近 30 天每日独立访客累计，所以同一人不同天可重复计入。只放在 Private 的访客卡不会开启采集，可读到以前累积的统计。缓存、数据保留和第三方查询细节见 README「生活模块」。
+
+
+## 网易云歌曲接口（0.10）
+
+- `GET /api/admin/netease?id=2700386313`：需管理员登录，返回 `{id,title,artist,cover,page}`，用于明确点击导入。只接受 1～16 位正整数歌曲 ID，不接受任意 URL，也不返回原始平台响应。
+- `GET /api/music/netease?id=2700386313`：主人可预览；匿名只能请求已发布、可见 Public 音乐模块引用的歌曲 ID，否则 404。返回上述字段以及 `{audio,playable}`。`audio` 是短期的 HTTPS CDN 地址，空字符串表示当前未获取到可用外链。`playable:true` 只说明取得了合规地址，实际浏览器播放仍可能失败，必须处理 `audio.error` 和 `play()` 拒绝。
+
+编号错误为 400，元信息上游失败为 503；元信息成功但外链不可用仍返回 200、`playable:false`。元信息缓存 6 小时，外链结果缓存 60 秒，最多缓存 100 首，各共享每分钟 60 次上游请求限额。没有音频转发代理，没有长期存储播放地址。上传素材的 ACL 不变；网易云外链受平台权限控制，无法由 Mosaic 撤销第三方已发出的链接。

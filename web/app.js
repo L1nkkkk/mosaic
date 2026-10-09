@@ -176,7 +176,7 @@ function renderPage(page, destination, audience = 'public') {
         badge.innerHTML = `<span class="audience-badge ${item.audience === 'private' ? 'private' : 'public'}">${item.audience === 'private' ? '仅自己' : '公开'}</span>${item.audience !== 'private' && item.visible === false ? '<span class="hidden-caption">已隐藏</span>' : ''}`;
       } else badge?.remove();
     }
-    const options = { id: item.id, appearance: item.appearance, data: item.data, resource: resources.get(item.id), writable: audience === 'private', request: route => api(route), save: data => saveModule(item.id, data, item.data) };
+    const options = { id: item.id, view: editing ? 'edit' : audience, appearance: item.appearance, data: item.data, resource: resources.get(item.id), writable: audience === 'private', request: route => api(route), save: data => saveModule(item.id, data, item.data) };
     if (!entry.host) entry.host = createModuleHost(content, module || {}, options);
     else entry.host.update(options);
     if (!slot.hidden) slots.push({ element: slot, content, layout });

@@ -1,4 +1,6 @@
 import { MediaStore, mediaReferences, MAX_MEDIA_BYTES } from './media.js';
+import { musicProvider, songId } from './music.js';
+import { neteaseId } from '../modules/music/source.js';
 import { weatherProvider, coordinates } from './weather.js';
 import { Visitors } from './visitors.js';
 import http from 'node:http';
@@ -31,6 +33,7 @@ export async function createApp(config) {
   const loginAttempts = new Map();
   const media = new MediaStore(dataDirectory);
   const weather = weatherProvider(config.externalFetch);
+  const music = musicProvider(config.externalFetch);
   const visitors = new Visitors(dataDirectory, config.sessionSecret, config.externalFetch);
   let mediaUploads = 0;
   const readHistory = historyReader(config.historyFile || (config.statusFile ? path.join(path.dirname(config.statusFile), 'history.sqlite') : null));
@@ -72,7 +75,7 @@ export async function createApp(config) {
     response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     response.setHeader('X-Frame-Options', 'DENY');
     response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; media-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.music.126.net; connect-src 'self'; media-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     try {
       const url = new URL(request.url, publicOrigin);
       if (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) return json(response, 404, { error: 'Not found' });
@@ -87,6 +90,16 @@ export async function createApp(config) {
         if (!auth.authenticated(request) && !mediaReferences(publicPage(state.published, registry)).has(name)) return json(response, 404, { error: 'Not found' });
         if (await media.serve(name, request, response)) return;
         return json(response, 404, { error: 'Not found' });
+      }
+      if (route === '/api/music/netease' && method === 'GET') {
+        const id = songId(url.searchParams.get('id'));
+        if (!auth.authenticated(request)) {
+          const state = await store.read();
+          const allowed = publicPage(state.published, registry).modules.some(item => item.type === 'music' && item.data.tracks.some(track => (track.neteaseId || neteaseId(track.audio)) === id));
+          if (!allowed) return json(response, 404, { error: '歌曲尚未公开。' });
+        }
+        try { return json(response, 200, await music.resolve(id)); }
+        catch { return json(response, 503, { error: '暂时无法读取网易云歌曲信息，请稍后重试。' }); }
       }
       if (route === '/api/weather' && method === 'GET') {
         const latitude = url.searchParams.get('latitude'), longitude = url.searchParams.get('longitude');
@@ -172,6 +185,11 @@ export async function createApp(config) {
       }
       if (route.startsWith('/api/admin/')) {
         if (!auth.authenticated(request)) return json(response, 401, { error: '请先登录编辑台。' });
+        if (route === '/api/admin/netease' && method === 'GET') {
+          const id = songId(url.searchParams.get('id'));
+          try { return json(response, 200, await music.metadata(id)); }
+          catch { return json(response, 503, { error: '未能识别歌曲，请检查链接或稍后重试。' }); }
+        }
         if (route === '/api/admin/cities' && method === 'GET') {
           const name = url.searchParams.get('name')?.trim();
           if (!name || name.length < 2 || name.length > 80) return json(response, 400, { error: '请输入 2–80 个字的城市名称。' });

@@ -42,6 +42,7 @@ export function createModuleHost(element, module, options) {
     get appearance() { return current.appearance || 'card'; },
     get theme() { const css = getComputedStyle(surface); return Object.fromEntries(['paper', 'ink', 'muted', 'line', 'violet', 'white'].map(key => [key, css.getPropertyValue('--' + key).trim()])); },
     get writable() { return Boolean(current.writable); },
+    get view() { return current.view || 'public'; },
     get reducedMotion() { return reduced.matches; },
     request: route => current.request(route),
     save: async data => {

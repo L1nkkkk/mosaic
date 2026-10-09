@@ -1,6 +1,6 @@
 # 模块开发手册
 
-本文对应 Mosaic 0.9.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
+本文对应 Mosaic 0.10.x，以仓库当前实现为准。模块负责内容、编辑和内部尺寸适配；核心负责发现、权限、保存发布以及卡片外框。
 
 [项目介绍](PROJECT.md) · [HTTP 接口参考](HTTP-API.md) · [返回 README](../README.md)
 
@@ -483,3 +483,10 @@ imageElement(img, data.cover, data.title);
 素材引用应作为数据中的独立字符串保存，格式是 `api/media/<sha256>.<扩展名>`，不要拼接查询参数、嵌入 HTML 或改成绝对 URL。后端递归读取草稿与发布数据中的规范路径来决定保留和公开权限；只存在前端内存中的引用不算已保存。图片只通过上传接入，不允许任意远程图片 URL。音频直链由浏览器访问，不由服务器代理下载。
 
 新增资源接口仍需明确实现后端路由，不能让模块提供任意上游 URL。天气和访客的服务端实现分别位于 `server/weather.js`、`server/visitors.js`；`server/external.js` 提供超时、响应大小上限和缓存。五个模块都没有向核心加入自己的尺寸分支。
+
+
+### 当前展示环境与音乐状态（0.10）
+
+`context.view` 是只读的当前环境：`public`、`private`、`edit` 或 `lab`，默认 `public`。可用于避免在编辑器或实验台自动播放，不作为权限边界；授权仍依赖服务端。旧模块无需修改。
+
+音乐数据增加 `mode`（`sequence / loop / single / shuffle`，默认 `sequence`）与 `autoplay`（布尔值，默认 false）。歌曲增加可选 `neteaseId` 和 `neteaseCover`；本地 `cover` 优先。网易云播放地址有时效，不能写入草稿，按当前歌曲使用 `context.request('music/netease?id=…')` 读取。`generation` 标识切歌请求，丢弃迟到的旧响应；`dispose()` 后的响应同样不应用。`source.js` 负责规范链接、有限模式的选曲规则，播放器保留原生音频节点并处理 `play()` Promise 的拒绝。
