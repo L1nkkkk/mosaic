@@ -163,7 +163,8 @@ function renderPage(page, destination, audience = 'public') {
       let bar = slot.querySelector('.module-editbar');
       if (!bar) {
         bar = document.createElement('div'); bar.className = 'module-editbar';
-        bar.innerHTML = `<button type="button" class="layout-drag" data-layout-action="move" data-label="${escape(module?.meta.name || '模块')}" aria-label="拖动排序 ${escape(module?.meta.name || '模块')}" aria-describedby="layout-help"><span aria-hidden="true">⠿</span><span>${escape(module?.meta.name || '模块')}</span></button><span class="layout-size"></span>`;
+        bar.innerHTML = `<button type="button" class="layout-drag" data-layout-action="move" data-label="${escape(module?.meta.name || '模块')}" aria-label="拖动排序 ${escape(module?.meta.name || '模块')}" aria-describedby="layout-help"><span aria-hidden="true">⠿</span><span>${escape(module?.meta.name || '模块')}</span></button><span class="layout-size"></span><button type="button" class="module-edit-button text-button" aria-label="编辑${escape(module?.meta.name || '模块')}">编辑</button>`;
+        bar.querySelector('.module-edit-button').onclick = () => openModuleEditor(item.id);
         slot.prepend(bar);
         const resize = document.createElement('button'); resize.type = 'button'; resize.className = 'layout-resize'; resize.dataset.layoutAction = 'resize';
         resize.setAttribute('aria-label', `调整${module?.meta.name || '模块'}大小`); resize.setAttribute('aria-describedby', 'layout-help'); resize.innerHTML = '<span aria-hidden="true">↘</span>'; frame.append(resize);
@@ -295,52 +296,56 @@ function finishArrange(change) {
   if (message) document.querySelector('#layout-status').textContent = message;
 }
 
-function move(id, offset) {
-  const list = state.draft.modules;
-  const index = list.findIndex(item => item.id === id);
-  if (index + offset < 0 || index + offset >= list.length) return;
-  [list[index], list[index + offset]] = [list[index + offset], list[index]];
-  setDirty(); renderModuleList(); updatePreview();
+function openModuleEditor(id) {
+  document.querySelector('#module-save-message').textContent = '';
+  selectModule(id);
+  const dialog = document.querySelector('#module-editor');
+  if (!dialog.open) dialog.showModal();
 }
 
 function renderModuleList() {
   const list = document.querySelector('#module-list');
   list.replaceChildren();
-  document.querySelector('#module-count').textContent = String(state.draft.modules.length).padStart(2, '0');
+  document.querySelector('#module-count').textContent = state.draft.modules.length;
+  const query = document.querySelector('#find-module').value.trim().toLocaleLowerCase();
   state.draft.modules.forEach((item, index) => {
     const meta = catalog.find(meta => meta.id === item.type);
-    const row = document.createElement('div');
-    row.dataset.moduleId = item.id;
-    row.className = `module-row${selected === item.id ? ' selected' : ''}${item.audience !== 'private' && item.visible === false ? ' hidden-module' : ''}`;
-    row.innerHTML = `<button type="button" class="module-select" aria-pressed="${selected === item.id}"><span class="module-number">${String(index + 1).padStart(2, '0')}</span><span><strong>${escape(meta?.name || item.type)}</strong><small>${escape((item.data.title || item.data.label || '模块内容').replaceAll('\n', ' '))}</small></span></button><div class="row-controls"><button type="button" data-action="up" title="向上移动" aria-label="向上移动 ${escape(meta?.name || '模块')}" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-action="down" title="向下移动" aria-label="向下移动 ${escape(meta?.name || '模块')}" ${index === state.draft.modules.length - 1 ? 'disabled' : ''}>↓</button></div>`;
-    const drag = document.createElement('button'); drag.type = 'button'; drag.className = 'layout-drag list-drag'; drag.dataset.layoutAction = 'move'; drag.dataset.label = meta?.name || '模块';
-    drag.setAttribute('aria-label', `拖动排序 ${meta?.name || '模块'}`); drag.setAttribute('aria-describedby', 'layout-help'); drag.innerHTML = '<span aria-hidden="true">⠿</span>';
-    row.prepend(drag);
-    row.querySelector('.module-select').onclick = () => selectModule(item.id);
-    const scope = document.createElement('span'); scope.className = `row-audience ${item.audience === 'private' ? 'private' : ''}`; scope.textContent = item.audience === 'private' ? '仅自己' : '公开';
-    row.querySelector('strong').append(scope);
-    row.querySelector('[data-action="up"]').onclick = () => move(item.id, -1);
-    row.querySelector('[data-action="down"]').onclick = () => move(item.id, 1);
-    list.append(row);
+    const title = item.data.title || item.data.label || meta?.name || item.type;
+    if (query && !`${meta?.name} ${title}`.toLocaleLowerCase().includes(query)) return;
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'module-jump';
+    button.innerHTML = `<span class="module-number">${String(index + 1).padStart(2, '0')}</span><span><strong>${escape(title)}</strong><small>${escape(meta?.name || item.type)} · ${item.audience === 'private' ? '仅自己' : item.visible === false ? '公开 · 已隐藏' : '公开'}</small></span><span aria-hidden="true">↗</span>`;
+    button.onclick = () => {
+      document.querySelector('#module-finder').close();
+      document.querySelector('#private-preview').click();
+      const slot = [...document.querySelectorAll('#preview-page>.module-slot')].find(slot => slot.dataset.moduleId === item.id);
+      slot?.scrollIntoView({ block: 'center' });
+      openModuleEditor(item.id);
+    };
+    list.append(button);
   });
+  document.querySelector('#find-empty').hidden = Boolean(list.children.length);
 }
 
 function renderFields() {
   const container = document.querySelector('#module-fields');
+  const keepSettings = container.dataset.moduleId === selected && container.querySelector('.module-settings')?.open;
+  const focusLabel = container.contains(document.activeElement) ? document.activeElement.getAttribute('aria-label') : null;
+  container.dataset.moduleId = selected || '';
   container.replaceChildren();
   const item = state.draft.modules.find(item => item.id === selected);
-  if (!item) { container.innerHTML = '<p class="muted">选择一个模块，开始编辑它的内容。</p>'; return; }
+  if (!item) { document.querySelector('#module-editor').close(); return; }
   const module = definitions.get(item.type);
-  const heading = document.createElement('div');
-  heading.className = 'section-heading';
-  heading.innerHTML = `<h3>${escape(module?.meta.name || '模块设置')}</h3>`;
-  container.append(heading);
+  document.querySelector('#module-editor-title').textContent = `编辑${module?.meta.name || '模块'}`;
+  const settings = document.createElement('details'); settings.className = 'module-settings';
+  settings.innerHTML = '<summary>尺寸、外观与显示范围</summary>'; settings.open = Boolean(keepSettings);
+  const contentFields = document.createElement('div'); contentFields.className = 'module-content-fields';
+  container.append(contentFields, settings);
   const audienceField = document.createElement('label'); audienceField.className = 'field';
   audienceField.innerHTML = '<span>显示范围</span><select aria-label="显示范围"><option value="private">仅自己可见</option><option value="public">公开</option></select>';
   const audienceSelect = audienceField.querySelector('select'); audienceSelect.value = item.audience || 'public'; audienceSelect.disabled = Boolean(module?.meta.privateOnly);
   audienceSelect.onchange = () => { item.audience = audienceSelect.value; item.visible = item.audience === 'public'; setDirty(); renderModuleList(); renderFields(); updatePreview(); };
-  container.append(audienceField);
-  const scopeHelp = document.createElement('p'); scopeHelp.className = 'scope-help'; scopeHelp.textContent = module?.meta.privateOnly ? '此模块仅自己可见。' : '设为仅自己并保存，会撤下公开内容；设为公开后需再次发布。'; container.append(scopeHelp);
+  settings.append(audienceField);
+  const scopeHelp = document.createElement('p'); scopeHelp.className = 'scope-help'; scopeHelp.textContent = module?.meta.privateOnly ? '此模块仅自己可见。' : '设为仅自己并保存，会撤下公开内容；设为公开后需再次发布。'; settings.append(scopeHelp);
   const widthField = document.createElement('label'); widthField.className = 'field';
   widthField.innerHTML = '<span>模块宽度</span><select aria-label="模块宽度"><option value="">跟随模块推荐</option><option value="3">四分之一行</option><option value="4">三分之一行</option><option value="6">半行</option><option value="8">三分之二行</option><option value="12">整行</option></select>';
   const widthSelect = widthField.querySelector('select');
@@ -351,7 +356,7 @@ function renderFields() {
     finishArrange({ kind: 'resize', id: item.id, layout });
   };
   const widthHelp = document.createElement('p'); widthHelp.className = 'scope-help'; widthHelp.textContent = '空间不足时会自动加宽、换行；模块顺序保持不变。';
-  container.append(widthField, widthHelp);
+  settings.append(widthField, widthHelp);
   const heightField = document.createElement('label'); heightField.className = 'field';
   heightField.innerHTML = '<span>模块高度</span><input type="number" min="120" max="1600" step="1" placeholder="自动，随内容或模块比例" aria-label="模块高度（像素）">';
   const heightInput = heightField.querySelector('input'); heightInput.value = item.layout?.height ?? '';
@@ -362,28 +367,29 @@ function renderFields() {
   };
   const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'text-button reset-layout'; reset.textContent = '恢复推荐尺寸'; reset.disabled = !item.layout;
   reset.onclick = () => finishArrange({ kind: 'resize', id: item.id });
-  container.append(heightField, reset);
+  settings.append(heightField, reset);
   const appearance = document.createElement('label'); appearance.className = 'field';
   appearance.innerHTML = '<span>外观</span><select aria-label="模块外观"><option value="card">模块默认</option><option value="bare">无边框</option></select>';
   appearance.querySelector('select').value = item.appearance || 'card';
   appearance.querySelector('select').onchange = event => { item.appearance = event.target.value; setDirty(); updatePreview(); };
-  container.append(appearance);
+  settings.append(appearance);
   if (module) {
     try {
-      container.append(module.edit({ data: item.data, change(next, refresh = false) {
+      contentFields.append(module.edit({ data: item.data, change(next, refresh = false) {
         Object.assign(item.data, next);
         setDirty(); updatePreview();
         if (refresh) { renderFields(); renderModuleList(); }
       } }));
-    } catch { container.append(document.createTextNode('这个模块暂时无法编辑，原内容已保留。')); }
+    } catch { contentFields.append(document.createTextNode('这个模块暂时无法编辑，原内容已保留。')); }
   }
   const controls = document.createElement('div'); controls.className = 'module-actions';
   const visibility = document.createElement('button'); visibility.type = 'button'; visibility.className = 'text-button'; visibility.textContent = item.visible === false ? '恢复展示' : '暂时隐藏';
   visibility.onclick = () => { item.visible = item.visible === false; setDirty(); renderModuleList(); renderFields(); updatePreview(); };
   const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button danger'; remove.textContent = '移除模块';
-  remove.onclick = () => { state.draft.modules = state.draft.modules.filter(entry => entry.id !== item.id); selected = state.draft.modules[0]?.id; setDirty(); renderModuleList(); renderFields(); updatePreview(); };
+  remove.onclick = () => { state.draft.modules = state.draft.modules.filter(entry => entry.id !== item.id); selected = undefined; setDirty(); renderModuleList(); renderFields(); updatePreview(); };
   if (item.audience !== 'private') controls.append(visibility);
   controls.append(remove); container.append(controls);
+  if (focusLabel) [...container.querySelectorAll('[aria-label]')].find(element => element.getAttribute('aria-label') === focusLabel)?.focus({ preventScroll: true });
 }
 
 function showPalette() {
@@ -397,6 +403,10 @@ function showPalette() {
     button.onclick = () => {
       const item = { id: crypto.randomUUID(), type: meta.id, audience: 'private', visible: false, data: structuredClone(meta.defaultData) };
       state.draft.modules.push(item); selected = item.id; setDirty(); renderModuleList(); renderFields(); updatePreview(); dialog.close();
+      document.querySelector('#private-preview').click();
+      const slot = [...document.querySelectorAll('#preview-page>.module-slot')].find(slot => slot.dataset.moduleId === item.id);
+      slot?.scrollIntoView({ block: 'center' });
+      openModuleEditor(item.id);
       refreshResources(state.draft).then(updatePreview).catch(() => {});
     };
     list.append(button);
@@ -415,7 +425,9 @@ async function save(publish = false) {
   if (busy) return;
   busy = true;
   document.querySelector('.editor-layout').inert = true;
-  const buttons = [document.querySelector('#save-draft'), document.querySelector('#publish')];
+  const buttons = [document.querySelector('#save-draft'), document.querySelector('#publish'), document.querySelector('#save-module')];
+  document.querySelector('#module-fields').inert = true;
+  document.querySelector('#space-settings').inert = true;
   buttons.forEach(button => { button.disabled = true; });
   try {
     if (dirty) await saveDraft();
@@ -425,21 +437,28 @@ async function save(publish = false) {
       document.querySelector('#save-status').textContent = '公开页已更新';
       notice('公开页已更新。');
     } else notice('已保存。');
+    return true;
   } catch (error) {
+    document.querySelector('#module-save-message').textContent = error.message;
     notice(error.message, true);
     if (error.status === 401) document.querySelector('#save-status').textContent = '登录已过期，请重新登录；先复制尚未保存的内容';
-  } finally { busy = false; document.querySelector('.editor-layout').inert = false; buttons.forEach(button => { button.disabled = false; }); }
+    return false;
+  } finally { busy = false; document.querySelector('#module-fields').inert = false; document.querySelector('#space-settings').inert = false; document.querySelector('.editor-layout').inert = false; buttons.forEach(button => { button.disabled = false; }); }
 }
 
 async function loadEditor() {
   await loadModules(true);
   ({ attachLayoutEditor, reorderModules } = await import('./arrange.js'));
   layoutEditor?.destroy(); layoutEditor = undefined;
-  state = await api('admin/state'); dirty = false; selected = state.draft.modules[0]?.id;
+  state = await api('admin/state'); dirty = false; selected = undefined;
   previewAudience = 'private';
   await refreshResources(state.draft);
   document.title = '编辑台 · Mosaic';
-  app.innerHTML = `<div class="editor-shell"><header class="editor-header"><a class="brand" href="private">${logo}</a><span class="workspace-badge">编辑台</span><span id="save-status" role="status">所有草稿已保存</span><div class="editor-toolbar"><a class="text-button" href="lab" target="_blank" rel="noopener">实验台 ↗</a><a class="text-button" href="./" target="_blank" rel="noopener">公开页 ↗</a><a class="text-button" href="private" target="_blank" rel="noopener">私人页 ↗</a><button class="button outline" id="save-draft">保存草稿</button><button class="button primary" id="publish">发布</button></div></header><main id="main" class="editor-layout"><aside class="editor-sidebar"><h1 class="sr-only">编辑页面</h1><div id="space-settings"></div><div class="section-heading"><h2>页面模块 <span id="module-count"></span></h2><button class="text-button" id="add-module">＋ 添加</button></div><div id="module-list"></div><div id="module-fields"></div><div class="sidebar-bottom"><span>新模块仅自己可见</span><button class="text-button" id="logout">退出登录</button></div></aside><section class="workspace-preview" aria-label="页面实时预览"><div class="preview-toolbar"><div><strong>预览</strong></div><div class="segmented"><button type="button" id="wide-preview" class="active" aria-pressed="true">宽屏</button><button type="button" id="narrow-preview" aria-pressed="false">窄屏</button></div></div><div class="audience-preview"><span>预览范围</span><div class="segmented"><button type="button" id="private-preview" class="active" aria-pressed="true">全部</button><button type="button" id="public-preview" aria-pressed="false">公开</button></div></div><div class="preview" id="preview"><div class="page-grid" id="preview-page"></div></div></section></main><dialog id="module-picker"><div class="dialog-heading"><div><h2>添加模块</h2></div><button type="button" class="icon-button" id="close-picker" aria-label="关闭">×</button></div><div class="module-options"></div></dialog></div>`;
+  app.innerHTML = `<div class="editor-shell"><header class="editor-header"><a class="text-button" href="private">← 我的页面</a><span class="workspace-badge">编辑台</span><span id="save-status" role="status">所有草稿已保存</span><div class="editor-toolbar"><button class="text-button" id="open-page-settings">页面设置</button><a class="text-button" href="./" target="_blank" rel="noopener">公开页 ↗</a><button class="button outline" id="save-draft">保存草稿</button><button class="button primary" id="publish">发布</button></div></header><main id="main" class="editor-layout"><h1 class="sr-only">编辑页面</h1><section class="workspace-preview" aria-label="页面实时预览"><div class="preview-toolbar"><div class="canvas-actions"><button class="button primary small" id="add-module">＋ 添加模块</button><button class="button outline small" id="open-module-finder">查找模块 <span id="module-count"></span></button></div><div class="segmented"><button type="button" id="wide-preview" class="active" aria-pressed="true">宽屏</button><button type="button" id="narrow-preview" aria-pressed="false">窄屏</button></div></div><div class="audience-preview"><span>点击模块空白处或「编辑」修改内容</span><div class="segmented"><button type="button" id="private-preview" class="active" aria-pressed="true">全部</button><button type="button" id="public-preview" aria-pressed="false">公开</button></div></div><div class="preview" id="preview"><div class="page-grid" id="preview-page"></div></div></section></main>
+  <dialog id="module-editor" class="canvas-dialog" aria-labelledby="module-editor-title"><div class="dialog-heading"><h2 id="module-editor-title">编辑模块</h2><button class="icon-button" type="button" data-close="module-editor" aria-label="关闭模块编辑">×</button></div><div id="module-fields"></div><p id="module-save-message" role="status" class="inline-error"></p><footer class="dialog-actions"><span>完成后可继续排布，发布后访客才看到更新。</span><button class="button outline small" type="button" data-close="module-editor">完成编辑</button><button class="button primary small" id="save-module" type="button">保存草稿</button></footer></dialog>
+  <dialog id="module-finder" class="canvas-dialog" aria-labelledby="module-finder-title"><div class="dialog-heading"><h2 id="module-finder-title">查找模块</h2><button class="icon-button" type="button" data-close="module-finder" aria-label="关闭查找">×</button></div><label class="field"><span>按名称或标题查找，包括隐藏模块</span><input id="find-module" type="search" placeholder="搜索模块…" autocomplete="off"></label><div id="module-list"></div><p id="find-empty" class="muted" hidden>没有匹配的模块。</p></dialog>
+  <dialog id="page-settings" class="canvas-dialog" aria-labelledby="page-settings-title"><div class="dialog-heading"><h2 id="page-settings-title">页面设置</h2><button class="icon-button" type="button" data-close="page-settings" aria-label="关闭页面设置">×</button></div><div id="space-settings"></div><div class="dialog-actions"><a class="text-button" href="lab" target="_blank" rel="noopener">模块实验台 ↗</a><button class="text-button" id="logout">退出登录</button><button class="button primary small" data-close="page-settings">完成</button></div></dialog>
+  <dialog id="module-picker" aria-labelledby="module-picker-title"><div class="dialog-heading"><h2 id="module-picker-title">添加模块</h2><button type="button" class="icon-button" id="close-picker" aria-label="关闭">×</button></div><div class="module-options"></div></dialog></div>`;
   mountShell(app, 'edit');
   document.querySelector('#space-settings').append(field('空间名称', state.draft.title, value => { state.draft.title = value; setDirty(); }, { maxLength: 80 }));
   const flow = document.createElement('label'); flow.className = 'field';
@@ -455,6 +474,22 @@ async function loadEditor() {
     select: selectModule,
     complete: finishArrange,
   });
+  document.querySelector('#preview-page').addEventListener('click', event => {
+    if (layoutEditor.active || event.defaultPrevented || getSelection()?.toString()) return;
+    const target = event.composedPath()[0];
+    if (!(target instanceof Element) || target.closest('a,button,input,textarea,select,label,audio,video,canvas,svg,summary,[contenteditable],[role="button"],[role="slider"],[data-layout-action]')) return;
+    const slot = event.target.closest('.module-slot');
+    if (slot) openModuleEditor(slot.dataset.moduleId);
+  });
+  document.querySelectorAll('[data-close]').forEach(button => { button.onclick = () => document.getElementById(button.dataset.close).close(); });
+  document.querySelector('#module-editor').addEventListener('close', () => {
+    const slot = [...document.querySelectorAll('#preview-page>.module-slot')].find(slot => slot.dataset.moduleId === selected);
+    (slot?.querySelector('.module-edit-button') || document.querySelector('#add-module')).focus({ preventScroll: true });
+  });
+  document.querySelector('#open-page-settings').onclick = () => document.querySelector('#page-settings').showModal();
+  document.querySelector('#open-module-finder').onclick = () => { renderModuleList(); document.querySelector('#module-finder').showModal(); document.querySelector('#find-module').focus(); };
+  document.querySelector('#find-module').oninput = renderModuleList;
+  document.querySelector('#save-module').onclick = async () => { if (await save()) document.querySelector('#module-editor').close(); };
   document.querySelector('#add-module').onclick = showPalette;
   document.querySelector('#close-picker').onclick = () => document.querySelector('#module-picker').close();
   document.querySelector('#save-draft').onclick = () => save();

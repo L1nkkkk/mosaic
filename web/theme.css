@@ -205,3 +205,28 @@ dialog { backdrop-filter: blur(24px); }
 .media-editor { padding:12px; border:1px solid var(--line); border-radius:8px; min-width:0; }
 .media-editor input[type="file"] { max-width:100%; font-size:11px; }
 .media-editor small { font-size:10px; line-height:1.6; color:var(--muted); overflow-wrap:anywhere; }
+
+/* Canvas-first editor: controls appear only when requested. */
+.view-edit { display:block; }.view-edit>.mosaic-main { margin:0; width:100%; }
+.view-edit .editor-layout { display:block; min-height:calc(100vh - 82px); }
+.view-edit .workspace-preview { max-width:1680px; margin:auto; padding:24px 28px 64px; }
+.canvas-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.view-edit .preview-toolbar { flex-wrap:wrap; gap:12px; }
+.view-edit .preview-toolbar span { margin-left:5px; }
+.module-edit-button { flex:none; padding:6px 10px; border-radius:6px; color:var(--violet); background:var(--violet-soft); font-size:11px; }
+.module-editbar .layout-size { margin-left:auto; }
+.module-editbar .layout-drag { flex:1; }
+.canvas-dialog { width:min(580px,calc(100vw - 32px)); max-height:calc(100dvh - 40px); padding:24px; overflow:auto; overscroll-behavior:contain; }
+.canvas-dialog .dialog-heading { margin-bottom:24px; }
+.canvas-dialog #module-fields { margin:0; border:0; }
+.module-settings { border-top:1px solid var(--line); margin-top:24px; padding-top:18px; }
+.module-settings summary { cursor:pointer; color:var(--muted); font-size:13px; margin-bottom:20px; }
+.dialog-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:12px; border-top:1px solid var(--line); margin-top:24px; padding-top:18px; }
+.dialog-actions>span { flex-basis:100%; color:var(--muted); font-size:11px; line-height:1.7; }
+.module-jump { display:flex; align-items:center; gap:14px; width:100%; text-align:left; background:var(--white); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:8px; }
+.module-jump>span:nth-child(2) { flex:1; min-width:0; overflow-wrap:anywhere; }.module-jump strong { font-size:13px; }.module-jump small { display:block; font-size:11px; color:var(--muted); margin-top:6px; }
+.module-jump:hover,.module-jump:focus-visible { border-color:var(--violet); background:var(--violet-soft); }
+@media(max-width:760px) { .view-edit .workspace-preview { padding:16px 12px 40px; }.view-edit .preview { padding:10px; }.view-edit .audience-preview { gap:12px; flex-wrap:wrap; }.canvas-dialog { padding:20px; max-height:calc(100dvh - 24px); }.module-editbar { flex-wrap:wrap; }.view-edit .editor-header { gap:12px; } }
+
+.canvas-dialog>.dialog-heading { position:sticky; top:-24px; z-index:2; padding-block:12px; background:var(--paper); }
+@media(max-width:760px) { .canvas-dialog>.dialog-heading { top:-20px; } }

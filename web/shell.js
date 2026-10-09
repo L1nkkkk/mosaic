@@ -38,7 +38,7 @@ export function mountShell(app, active) {
     setTheme(document.documentElement.dataset.theme);
   };
   // Public is always a visitor view, including when the owner is signed in.
-  if (active === 'public') {
+  if (active === 'public' || active === 'edit') {
     layout.append(content); app.append(layout); bindTheme();
     return;
   }

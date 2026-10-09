@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { withBrowser } from './harness.mjs';
+await withBrowser(async ({app,base,command,evaluate,waitFor})=>{
+  const state=await app.store.read();
+  const note=app.registry.get('note').meta.defaultData;
+  const page={title:'Mosaic · 画布编辑',modules:Array.from({length:24},(_,i)=>({id:'note-'+i,type:'note',audience:i===23?'private':'public',visible:i!==23,layout:{span:4,height:240},data:{...note,title:'手记 '+i}}))};
+  page.modules[1]={id:'tasks',type:'todo',audience:'private',visible:true,layout:{span:4,height:240},data:structuredClone(app.registry.get('todo').meta.defaultData)};
+  await app.store.mutate(state.revision,s=>({...s,draft:page}));
+  await command('Page.navigate',{url:base+'/edit'});
+  await waitFor('document.querySelectorAll("#preview-page>.module-slot").length===24');
+  assert.equal(await evaluate('Boolean(document.querySelector(".editor-sidebar,.mosaic-sidebar"))'),false);
+  assert.equal(await evaluate('document.querySelectorAll("dialog[open]").length'),0);
+  // Interactive content retains its behavior; it must never open the editor.
+  await evaluate(`document.querySelector('.todo-module input[type=checkbox]').click()`);
+  assert.equal(await evaluate('document.querySelector("#module-editor").open'),false);
+  await evaluate(`window.cardInput=document.querySelector('.todo-module form input');cardInput.value='保留未提交内容';cardInput.click()`);
+  assert.equal(await evaluate('document.querySelector("#module-editor").open'),false);
+  if(process.env.MOSAIC_REVIEW_DIR){await mkdir(process.env.MOSAIC_REVIEW_DIR,{recursive:true});await writeFile(process.env.MOSAIC_REVIEW_DIR+'/editor-canvas.png',Buffer.from((await command('Page.captureScreenshot')).data,'base64'));}
+  await evaluate(`document.querySelector('[data-module-id="note-12"] .module-content article').scrollIntoView({block:'center'});window.beforeEditY=scrollY;window.cardNode=document.querySelector('[data-module-id="note-12"] article');cardNode.click()`);
+  await waitFor('document.querySelector("#module-editor").open');
+  assert.equal(await evaluate('document.querySelector("#module-editor").contains(document.activeElement)'),true);
+  await evaluate(`const f=document.querySelectorAll('#module-fields input')[1];f.value='修改后的手记';f.dispatchEvent(new Event('input'));document.querySelector('.module-settings').open=true;const w=document.querySelector('[aria-label="模块宽度"]');w.value='6';w.dispatchEvent(new Event('change'))`);
+  assert.equal(await evaluate('document.querySelector(".module-settings").open'),true);
+  await evaluate('window.refreshForTest()');
+  assert.equal(await evaluate(`cardInput===document.querySelector('.todo-module form input')`),true);
+  if(process.env.MOSAIC_REVIEW_DIR)await writeFile(process.env.MOSAIC_REVIEW_DIR+'/editor-panel.png',Buffer.from((await command('Page.captureScreenshot')).data,'base64'));
+  await evaluate(`document.querySelector('[data-close="module-editor"]').click()`);
+  await waitFor('!document.querySelector("#module-editor").open');
+  assert.ok(Math.abs(await evaluate('scrollY-beforeEditY'))<5,'Closing the editor preserves canvas scroll');
+  assert.equal(await evaluate(`document.activeElement===document.querySelector('[data-module-id="note-12"] .module-edit-button')`),true);
+  assert.equal(await evaluate('cardInput.value'),'保留未提交内容');
+  // A hidden/private module is still discoverable while previewing only public content.
+  await evaluate(`document.querySelector('#public-preview').click();document.querySelector('#open-module-finder').click();const q=document.querySelector('#find-module');q.value='手记 23';q.dispatchEvent(new Event('input'))`);
+  assert.equal(await evaluate('document.querySelectorAll(".module-jump").length'),1);
+  await evaluate(`document.querySelector('.module-jump').click()`);
+  await waitFor('document.querySelector("#module-editor").open');
+  assert.equal(await evaluate(`document.querySelector('#private-preview').getAttribute('aria-pressed')`),'true');
+  assert.ok(await evaluate(`document.querySelectorAll('#module-fields input')[1].value.includes('23')`));
+  // Save from the modal persists all local changes without publishing.
+  await evaluate(`document.querySelector('#save-module').click()`);
+  await waitFor('!document.querySelector("#module-editor").open');
+  const saved=await app.store.read();assert.equal(saved.draft.modules.find(m=>m.id==='note-12').data.title,'修改后的手记');
+  assert.equal(saved.draft.modules.find(m=>m.id==='note-12').layout.span,6);
+  assert.ok(!saved.published.modules.some(m=>m.data.title==='修改后的手记'));
+  await command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
+  await evaluate(`document.querySelector('[data-module-id="note-23"] .module-edit-button').click()`);
+  await waitFor('document.querySelector("#module-editor").open');
+  assert.equal(await evaluate(`document.documentElement.scrollWidth<=innerWidth && document.querySelector('#module-editor').scrollWidth<=document.querySelector('#module-editor').clientWidth+1`),true);
+  if(process.env.MOSAIC_REVIEW_DIR)await writeFile(process.env.MOSAIC_REVIEW_DIR+'/editor-mobile.png',Buffer.from((await command('Page.captureScreenshot')).data,'base64'));
+  await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await waitFor('!document.querySelector("#module-editor").open');
+  await evaluate(`document.querySelector('#open-page-settings').click()`);
+  await waitFor('document.querySelector("#page-settings").open');
+  assert.equal(await evaluate('document.querySelector("#page-settings").contains(document.activeElement)'),true);
+  await evaluate(`document.querySelector('[data-close="page-settings"]').click();document.querySelector('[data-module-id="note-23"] .module-edit-button').click();const input=document.querySelectorAll('#module-fields input')[1];input.value='保留冲突中的本地内容';input.dispatchEvent(new Event('input'))`);
+  const current=await app.store.read();await app.store.mutate(current.revision,s=>({...s,draft:{...s.draft,title:'另一个窗口已保存'}}));
+  await evaluate(`document.querySelector('#save-module').click()`);
+  await waitFor(`document.querySelector('#module-save-message').textContent.length>0 && !document.querySelector('#save-module').disabled`);
+  assert.equal(await evaluate('document.querySelector("#module-editor").open'),true);
+  assert.equal(await evaluate(`document.querySelectorAll('#module-fields input')[1].value`),'保留冲突中的本地内容');
+  console.log('Canvas editor: 24 modules, click-to-edit, input isolation, modal focus, scroll preservation, hidden module search, private draft persistence, settings and mobile/Escape verified');
+});

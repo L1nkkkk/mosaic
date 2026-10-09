@@ -1,6 +1,6 @@
 {
   "name": "mosaic-showcase",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "type": "module",
   "engines": { "node": ">=24" },
@@ -8,7 +8,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node --test test/*.test.js",
-    "test:browser": "node test/browser/scroll.mjs && node test/browser/runtime.mjs && node test/browser/appearance.mjs && node test/browser/loading.mjs && node test/browser/history.mjs && node test/browser/lifestyle.mjs",
+    "test:browser": "node test/browser/scroll.mjs && node test/browser/runtime.mjs && node test/browser/appearance.mjs && node test/browser/loading.mjs && node test/browser/history.mjs && node test/browser/lifestyle.mjs && node test/browser/editor.mjs",
     "check": "node scripts/check-modules.js"
   }
 }
