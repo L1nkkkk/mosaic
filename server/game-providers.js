@@ -51,7 +51,7 @@ export function gameProviders(fetcher = fetch, clock = Date.now) {
       const code = value.retcode ?? value.code ?? value.status;
       if (code !== 0) {
         if ([-100,10001,10000,10002].includes(code)) throw new GameError('auth', '登录凭据已失效，请重新绑定。');
-        if ([1034,10035].includes(code)) throw new GameError('verification', '请在官方社区完成验证后重试。');
+        if ([1034,5003,10035,10041].includes(code)) throw new GameError('verification', '社区要求额外安全验证，请先在官方 App 打开游戏数据页面并完成提示的验证，再返回刷新；仍失败时重新扫码绑定。');
         throw new GameError('unavailable', '社区未返回可用数据，请检查数据展示设置或稍后重试。');
       }
       if (!value.data || typeof value.data !== 'object') throw new Error();

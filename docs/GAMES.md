@@ -50,3 +50,5 @@
 扫码协议参考：genshin.py 的 `auth/subclients/app.py`、`utility/auth.py`；nonebot-plugin-skland 的 `api/login.py`。二维码编码器为 [Nayuki QR Code generator](https://www.nayuki.io/page/qr-code-generator-library)，MIT 授权，随代码本地提供。扫码专项测试：`node test/browser/game-qr.mjs`；官方创建及待扫描接口已实测，真实手机确认需要账号持有人完成。
 
 森空岛扫码等待状态依据[鹰角账号中心](https://user.hypergryph.com/)前端实现核对：通用扫码接口 100 为未扫描、101 为等待手机确认、102 为过期。
+
+米游社实时便笺返回 1034、5003、10035 或 10041 时显示「需要验证」。扫码成功只代表账号授权成功，不代表实时便笺能通过后续安全检查。先在官方 App 打开实时便笺并按提示验证，再返回刷新；若依旧失败可重新绑定，但不保证能解除服务器请求所遇到的验证限制。本站不自动完成验证码。

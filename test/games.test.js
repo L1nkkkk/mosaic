@@ -70,3 +70,21 @@ test('oversized upstream responses are rejected and wrong encryption keys fail e
   await oversized.initialize();
   assert.equal((await oversized.read()).games[0].state, 'unavailable');
 });
+
+test('Miyoushe dailyNote safety challenges display verification instead of connection failure', async t => {
+  const f = await fixture(t);
+  await f.games.configure({ provider: 'miyoushe', credential: 'cookie=test-cookie' });
+  const original = f.source.fetch;
+  // Match the production chain: successful role lookup, rejected dailyNote.
+  const { gameProviders } = await import('../server/game-providers.js');
+  for (const code of [5003, 10041]) {
+    f.games.provider = gameProviders(async (url, options) => url.includes('dailyNote')
+      ? new Response(JSON.stringify({ retcode: code, message: 'UPSTREAM-PRIVATE-DETAIL', data: null }))
+      : original(url, options));
+    f.advance(301000);
+    const game = (await f.games.read()).games.find(item => item.game === 'genshin');
+    assert.equal(game.state, 'verification');
+    assert.match(game.message, /验证/);
+    assert.ok(!game.message.includes('UPSTREAM-PRIVATE-DETAIL'));
+  }
+});
