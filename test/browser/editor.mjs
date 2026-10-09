@@ -28,7 +28,7 @@ await withBrowser(async ({app,base,command,evaluate,waitFor})=>{
   await evaluate(`document.querySelector('[data-close="module-editor"]').click()`);
   await waitFor('!document.querySelector("#module-editor").open');
   assert.ok(Math.abs(await evaluate('scrollY-beforeEditY'))<5,'Closing the editor preserves canvas scroll');
-  assert.equal(await evaluate(`document.activeElement===document.querySelector('[data-module-id="note-12"] .module-edit-button')`),true);
+  await waitFor(`document.activeElement===document.querySelector('[data-module-id="note-12"] .module-edit-button')`);
   assert.equal(await evaluate('cardInput.value'),'保留未提交内容');
   // A hidden/private module is still discoverable while previewing only public content.
   await evaluate(`document.querySelector('#public-preview').click();document.querySelector('#open-module-finder').click();const q=document.querySelector('#find-module');q.value='手记 23';q.dispatchEvent(new Event('input'))`);
