@@ -37,10 +37,25 @@ await withBrowser(async ({ base, command, evaluate, waitFor }) => {
   await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(await evaluate(`${card}.querySelector("form").elements.address.value`), 'https://example.com/a');
 
-  // The last address survives a reload of the Mosaic page.
+  // A fixed zoom lays the page out larger than the card and scales it back to fit exactly.
+  const zoomed = value => evaluate(`(() => { const select = ${card}.querySelector("select"); select.value = "${value}"; select.dispatchEvent(new Event("change")); const view = ${card}.querySelector(".browser-view").getBoundingClientRect(), box = ${frame}.getBoundingClientRect(); return { layout: ${frame}.clientWidth / view.width, fills: Math.abs(box.width - view.width) < 1 && Math.abs(box.height - view.height) < 1 }; })()`);
+  const half = await zoomed('0.5');
+  assert.ok(Math.abs(half.layout - 2) < 0.01 && half.fills, JSON.stringify(half));
+  // Fitting leaves a wide card close to full size and shows a narrow card a desktop-width page.
+  const wide = await zoomed('0');
+  assert.ok(wide.layout < 1.1 && wide.fills, JSON.stringify(wide));
+  await command('Emulation.setDeviceMetricsOverride', { width: 700, height: 900, deviceScaleFactor: 1, mobile: false });
+  await waitFor(`${frame}.clientWidth > 1000`);
+  const narrow = await zoomed('0');
+  assert.ok(narrow.fills && narrow.layout > 1.5, JSON.stringify(narrow));
+  await command('Emulation.clearDeviceMetricsOverride');
+  await zoomed('0.75');
+
+  // The last address and the zoom survive a reload of the Mosaic page.
   await evaluate('window.beforeReload = true');
   await command('Page.reload');
   await waitFor('!window.beforeReload && document.querySelector(".browser-module .browser-open")');
   assert.equal(await evaluate(`${card}.querySelector(".browser-open").href`), 'https://example.com/a');
-  console.log('Browser module: extension gate, sandbox, address bar and history verified.');
+  assert.equal(await evaluate(`${card}.querySelector("select").value`), '0.75');
+  console.log('Browser module: extension gate, sandbox, address bar, history and zoom verified.');
 });
