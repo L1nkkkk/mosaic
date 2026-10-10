@@ -267,3 +267,4 @@ dialog { backdrop-filter: blur(24px); }
   .view-public .dashboard-top { top: 12px; }
   .view-public .dashboard-intro { padding: 76px 0 22px; }
 }
+.live-field>span { display:flex; align-items:center; gap:8px; }

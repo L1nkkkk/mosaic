@@ -41,7 +41,9 @@ await withBrowser(async ({app,base,command,evaluate,waitFor})=>{
   await evaluate(`document.querySelector('#save-module').click()`);
   await waitFor('!document.querySelector("#module-editor").open');
   const saved=await app.store.read();assert.equal(saved.draft.modules.find(m=>m.id==='note-12').data.title,'修改后的手记');
-  assert.equal(saved.draft.modules.find(m=>m.id==='note-12').layout.span,6);
+  // The width was changed while arranging Private; Public keeps its own.
+  assert.equal(saved.draft.spaces.private.items.find(m=>m.id==='note-12').layout.span,6);
+  assert.equal(saved.draft.spaces.public.items.find(m=>m.id==='note-12').layout.span,4);
   assert.ok(!saved.published.modules.some(m=>m.data.title==='修改后的手记'));
   await command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:false});
   await evaluate(`document.querySelector('[data-module-id="note-23"] .module-edit-button').click()`);
