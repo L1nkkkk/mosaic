@@ -1,7 +1,7 @@
 import { mkdir, readFile, open, rename, unlink, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { ConflictError } from './store.js';
+import { ConflictError, syncDirectory } from './store.js';
 
 const imageName = /^[a-f0-9]{64}\.webp$/;
 const invalid = message => Object.assign(new Error(message), { status: 400 });
@@ -90,8 +90,7 @@ export class AppearanceStore {
       handle = await open(temporary, 'wx', 0o600);
       await handle.writeFile(data); await handle.sync(); await handle.close(); handle = null;
       await rename(temporary, filename);
-      const directory = await open(path.dirname(filename), 'r');
-      try { await directory.sync(); } finally { await directory.close(); }
+      await syncDirectory(path.dirname(filename));
     } finally {
       await handle?.close();
       await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });
