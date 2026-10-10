@@ -7,6 +7,7 @@ COPY server ./server
 COPY web ./web
 COPY modules ./modules
 COPY scripts ./scripts
+COPY extension ./extension
 COPY test ./test
 RUN npm test && npm run check
 

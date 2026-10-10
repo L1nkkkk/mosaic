@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>Mosaic Browser 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <form>
+    <label for="prefix">Mosaic 地址</label>
+    <input id="prefix" name="prefix" type="url" required placeholder="https://example.com/mosaic" autocomplete="off" spellcheck="false">
+    <p>填写你自己的 Mosaic 站点地址，包含部署前缀。扩展只在这个地址下的页面里放开网站嵌入。</p>
+    <button type="submit">保存</button>
+    <span role="status"></span>
+  </form>
+  <script src="core.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -280,7 +280,7 @@ export function render(data, resource) {
 
 模块资源可以放在自己的目录中。JS 里用 `new URL('./icon.svg', import.meta.url).href`，CSS 里用 `url('./icon.svg')`，以兼容 `/mosaic` 等部署前缀。静态服务当前支持 `.js`、`.css`、`.svg`、`.png`、`.woff2`；增加其他资源类型需要修改服务端支持列表。
 
-当前内容安全策略默认只允许同源脚本、样式和网络请求，图片允许同源及 `data:`。CDN 脚本、外部图片、第三方直接请求和 HTML 内联脚本不属于现有默认能力。普通 HTTP / HTTPS 外链跳转不受上述资源加载限制。
+当前内容安全策略默认只允许同源脚本、样式和网络请求，图片允许同源及 `data:`。CDN 脚本、外部图片、第三方直接请求和 HTML 内联脚本不属于现有默认能力。普通 HTTP / HTTPS 外链跳转不受上述资源加载限制。`frame-src https:` 允许模块嵌入 HTTPS 页面，目前只有浏览器模块使用。
 
 ## 8. 兼容、检查与排错
 
@@ -494,3 +494,16 @@ imageElement(img, data.cover, data.title);
 ## 游戏状态模块
 
 `game-status` 使用分离的定义与客户端入口，默认占满一行；宽度不足时内部三列变为单列。`load()` 读取登录保护的 `private/games`，账号绑定直接调用独立接口，不通过 `change()` 或 `context.save()` 保存凭据。后端 `server/games.js` 管理加密凭据、刷新串行化和错误快照，`server/game-providers.js` 负责固定上游请求及字段规范化。绑定步骤、更新策略和接口见[游戏状态说明](GAMES.md)。
+
+## 浏览器模块
+
+`browser` 是仅私人可见的生命周期模块，内容字段为标题、主页、搜索地址（含 `%s`）和最多 12 个书签，地址一律要求 `https:`。它不向服务器请求任何数据，也不保存凭据：页面在访客自己的浏览器里以 `<iframe>` 打开。
+
+- 嵌入能力来自 `extension/` 里的浏览器扩展。扩展确认当前页面属于已配置的 Mosaic 地址后，在 `<html>` 上写入 `data-mosaic-browser`；模块据此决定创建 iframe 还是显示安装提示，标记晚于挂载出现时也会自动接上。
+- iframe 使用不含 `allow-top-navigation` 的 `sandbox`，被嵌入的网站不能替换 Mosaic 页面。
+- 地址栏输入由 `modules/browser/address.js` 的 `resolveAddress()` 处理：像网址的输入补全为 HTTPS，其余套用搜索地址。该文件同时被服务端定义和客户端导入，不能访问 DOM。
+- 前进、后退和刷新由模块自己的地址记录驱动，直接设置 `iframe.src`。扩展的框架脚本通过 `postMessage` 上报站内跳转，模块只接受来自自己 iframe 的 `navigated` 消息；加载后的第一次上报视为该地址的落点并替换当前记录，避免重定向困住后退。
+- 上次浏览的地址按实例 ID 存在 `localStorage`，不调用 `context.save()`，浏览不会改动页面草稿。
+- `context.view` 为 `edit` 或 `lab` 时不自动加载网站，点击「加载页面」后才打开。
+
+核心为它只做了一处改动：内容安全策略增加 `frame-src https:`。检查：`npm test`（`test/browser-module.test.js`、`test/extension.test.js`）与 `node test/browser/browser-module.mjs`。

@@ -119,6 +119,7 @@ test('base path, public assets, health and content security headers work without
   assert.equal(home.status, 200);
   assert.match(home.text, /<base href="\/mosaic\/">/);
   assert.match(home.headers.get('content-security-policy'), /script-src 'self'/);
+  assert.match(home.headers.get('content-security-policy'), /frame-src https:;/);
   assert.equal((await f.request('/mosaic/web/app.js')).status, 200);
   assert.equal((await f.request('/mosaic/modules/intro/index.js')).status, 200);
   assert.equal((await f.request('/mosaic/api/health')).value.commit, 'test-commit');

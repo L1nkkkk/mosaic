@@ -8,7 +8,7 @@ const registry = await loadModules(directory);
 validatePage(initialPage(registry), registry);
 for (const module of registry.values()) await access(path.join(directory, module.meta.id, 'style.css'));
 // Parse client code without executing its DOM/WebGL imports inside Node.
-for (const base of [directory, fileURLToPath(new URL('../web', import.meta.url))]) {
+for (const base of [directory, fileURLToPath(new URL('../web', import.meta.url)), fileURLToPath(new URL('../extension', import.meta.url))]) {
   for (const filename of await readdir(base, { recursive: true })) if (filename.endsWith('.js')) execFileSync(process.execPath, ['--check', path.join(base, filename)], { stdio: 'pipe' });
 }
 console.log(`Module definitions, styles and JS syntax verified: ${[...registry.keys()].join(', ')}`);
