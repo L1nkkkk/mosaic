@@ -503,7 +503,8 @@ imageElement(img, data.cover, data.title);
 - iframe 使用不含 `allow-top-navigation` 的 `sandbox`，被嵌入的网站不能替换 Mosaic 页面。
 - 地址栏输入由 `modules/browser/address.js` 的 `resolveAddress()` 处理：像网址的输入补全为 HTTPS，其余套用搜索地址。该文件同时被服务端定义和客户端导入，不能访问 DOM。
 - 前进、后退和刷新由模块自己的地址记录驱动，直接设置 `iframe.src`。扩展的框架脚本通过 `postMessage` 上报站内跳转，模块只接受来自自己 iframe 的 `navigated` 消息；加载后的第一次上报视为该地址的落点并替换当前记录，避免重定向困住后退。
-- 上次浏览的地址按实例 ID 存在 `localStorage`，不调用 `context.save()`，浏览不会改动页面草稿。
+- 上次浏览的地址和页面缩放按实例 ID 存在 `localStorage`，不调用 `context.save()`，浏览不会改动页面草稿。
+- 工具栏的缩放默认「自适应」：卡片窄于 1200 像素时，iframe 按 1200 像素宽排版再整体缩小（最小 40%），半宽卡片里也能看到桌面版页面；也可固定为 50%–100%。缩放只用 `transform`，不改变外框尺寸，外框大小仍在编辑台拖动调整。
 - `context.view` 为 `edit` 或 `lab` 时不自动加载网站，点击「加载页面」后才打开。
 
 核心为它只做了一处改动：内容安全策略增加 `frame-src https:`。检查：`npm test`（`test/browser-module.test.js`、`test/extension.test.js`）与 `node test/browser/browser-module.mjs`。

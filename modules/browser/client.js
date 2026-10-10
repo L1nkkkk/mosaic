@@ -7,6 +7,10 @@ const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups allow-
 const ALLOW = 'fullscreen; autoplay; encrypted-media; picture-in-picture; clipboard-write';
 const key = id => `mosaic-browser:${id}`;
 const recall = id => { try { const url = localStorage.getItem(key(id)) || ''; return url.startsWith('https://') ? url : ''; } catch { return ''; } };
+// 0 fits a desktop-width page to the card; the choice is per device because it depends on the screen.
+const ZOOMS = [0, .5, .67, .75, .9, 1], DESKTOP_WIDTH = 1200, MIN_FIT = .4;
+const recallZoom = id => { try { const value = Number(localStorage.getItem(`${key(id)}:zoom`)); return String(ZOOMS.includes(value) ? value : 0); } catch { return '0'; } };
+const rememberZoom = (id, value) => { try { localStorage.setItem(`${key(id)}:zoom`, value); } catch { /* Private mode: fit to the card next time. */ } };
 const remember = (id, url) => { try { localStorage.setItem(key(id), url); } catch { /* Private mode: start from the home page next time. */ } };
 
 export function edit({ data, change }) {
@@ -34,7 +38,7 @@ export function edit({ data, change }) {
 
 export function mount(context) {
   const card = document.createElement('article'); card.className = 'browser-module';
-  card.innerHTML = '<div class="browser-bar"><button type="button" data-action="back" aria-label="后退" title="后退">←</button><button type="button" data-action="forward" aria-label="前进" title="前进">→</button><button type="button" data-action="reload" aria-label="刷新" title="刷新">↻</button><button type="button" data-action="home" aria-label="主页" title="主页">⌂</button><form><input name="address" aria-label="地址" autocomplete="off" spellcheck="false" placeholder="输入网址或搜索"></form><a class="browser-open" target="_blank" rel="noopener noreferrer" aria-label="在新标签页打开" title="在新标签页打开">↗</a></div><nav class="browser-marks" aria-label="书签"></nav><div class="browser-view"></div>';
+  card.innerHTML = '<div class="browser-bar"><button type="button" data-action="back" aria-label="后退" title="后退">←</button><button type="button" data-action="forward" aria-label="前进" title="前进">→</button><button type="button" data-action="reload" aria-label="刷新" title="刷新">↻</button><button type="button" data-action="home" aria-label="主页" title="主页">⌂</button><form><input name="address" aria-label="地址" autocomplete="off" spellcheck="false" placeholder="输入网址或搜索"></form><select name="zoom" aria-label="页面缩放" title="页面缩放"></select><a class="browser-open" target="_blank" rel="noopener noreferrer" aria-label="在新标签页打开" title="在新标签页打开">↗</a></div><nav class="browser-marks" aria-label="书签"></nav><div class="browser-view"></div>';
   context.root.append(card);
   const form = card.querySelector('form'), input = form.elements.address, open = card.querySelector('.browser-open');
   const marks = card.querySelector('.browser-marks'), view = card.querySelector('.browser-view');
@@ -42,6 +46,18 @@ export function mount(context) {
   const extension = () => Boolean(document.documentElement.dataset.mosaicBrowser);
   // The editor and the lab stay idle until asked, so arranging modules never starts a site.
   let data, frame, trail = [], index = -1, settled = true, started = !['edit', 'lab'].includes(context.view);
+  const zoom = card.querySelector('select');
+  zoom.append(...ZOOMS.map(value => new Option(value ? `${Math.round(value * 100)}%` : '自适应', String(value))));
+  zoom.value = recallZoom(context.id);
+  let width = 0;
+
+  // The frame is laid out larger than the card and scaled down, so a site sees a wider window than the card offers.
+  function scale() {
+    if (!frame) return;
+    const factor = Number(zoom.value) || Math.max(MIN_FIT, Math.min(1, width / DESKTOP_WIDTH)) || 1;
+    frame.style.width = frame.style.height = `${100 / factor}%`;
+    frame.style.transform = factor === 1 ? '' : `scale(${factor})`;
+  }
 
   function notice(message, action) {
     frame = undefined;
@@ -62,7 +78,7 @@ export function mount(context) {
     if (!frame) {
       frame = document.createElement('iframe');
       frame.setAttribute('sandbox', SANDBOX); frame.allow = ALLOW; frame.referrerPolicy = 'no-referrer';
-      view.replaceChildren(frame);
+      view.replaceChildren(frame); scale();
     }
     frame.title = data.title || '浏览器'; frame.src = url; settled = false;
   }
@@ -79,6 +95,7 @@ export function mount(context) {
     else if (action === 'reload') load(trail[index]); else if (action === 'home') visit(data.home);
   }, { signal: context.signal });
   form.addEventListener('submit', event => { event.preventDefault(); input.blur(); visit(resolveAddress(input.value, data.search)); }, { signal: context.signal });
+  zoom.addEventListener('change', () => { rememberZoom(context.id, zoom.value); scale(); }, { signal: context.signal });
   marks.addEventListener('click', event => { const url = event.target.closest('button')?.dataset.url; if (url) visit(url); }, { signal: context.signal });
   // The extension's frame script reports where the framed page went; nothing else is accepted.
   addEventListener('message', event => {
@@ -101,6 +118,7 @@ export function mount(context) {
       marks.hidden = !data.bookmarks.length;
       if (index < 0) visit(recall(context.id) || data.home);
     },
+    resize(size) { width = size.width; scale(); },
     dispose() { marker.disconnect(); if (frame) { frame.src = 'about:blank'; frame.remove(); } },
   };
 }
