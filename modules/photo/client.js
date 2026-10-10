@@ -11,9 +11,12 @@ export function edit({ data: initial, change }) {
 }
 export function mount(context) {
   const card = document.createElement('article'); card.className = 'photo-module'; card.dataset.ownBackground = ''; card.innerHTML = '<img class="photo-image" alt=""><div class="photo-shade"></div><span class="photo-placeholder">上传一张照片，留住一个瞬间。</span><div class="photo-copy"><h2></h2><p></p><a target="_blank" rel="noopener noreferrer" aria-label="打开照片链接">↗</a></div>'; context.root.append(card);
+  const image = card.querySelector('img'); image.onload = () => image.classList.add('is-loaded');
   return { update(data) {
-    imageElement(card.querySelector('img'), data.image, data.alt || data.title); card.querySelector('img').style.objectPosition = `50% ${data.position}%`;
-    card.querySelector('.photo-shade').style.opacity = String(data.shade / 100); card.querySelector('.photo-placeholder').hidden = Boolean(data.image);
+    if (image.dataset.url !== data.image) image.classList.remove('is-loaded');
+    imageElement(image, data.image, data.alt || data.title); card.querySelector('img').style.objectPosition = `50% ${data.position}%`;
+    // The shade only exists to keep text readable.
+    card.querySelector('.photo-shade').style.opacity = data.title || data.caption ? String(data.shade / 100) : '0'; card.querySelector('.photo-placeholder').hidden = Boolean(data.image);
     card.querySelector('h2').textContent = data.title; card.querySelector('p').textContent = data.caption;
     const link = card.querySelector('a'); link.hidden = !data.url; if (data.url) link.href = data.url; else link.removeAttribute('href');
   } };
