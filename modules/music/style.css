@@ -7,10 +7,10 @@
 .music-info { min-width:0; }.music-info h3 { font-size:18px; margin:0; overflow-wrap:anywhere; }.music-info p { font-size:12px; color:var(--muted); margin:8px 0 0; overflow-wrap:anywhere; }
 .music-module audio { display:block; width:100%; height:38px; margin-top:22px; }
 .music-playlist { display:flex; gap:8px; margin-top:14px; }.music-playlist select { min-width:0; flex:1; background:var(--input); color:var(--ink); border:1px solid var(--line); padding:7px; border-radius:6px; font:inherit; font-size:12px; }.music-playlist button { background:var(--violet-soft); color:var(--ink); border-radius:6px; padding:6px 12px; }.music-playlist button:disabled { opacity:.35; }
-.music-status { font-size:10px; line-height:1.6; color:var(--muted); margin-top:14px; }
+.music-status { font-size:11px; line-height:1.6; color:var(--muted); margin-top:14px; }
 .playing.music-visible .music-record { animation:music-spin 20s linear infinite; }
 @keyframes music-spin { to { transform:rotate(360deg); } }
 @media(prefers-reduced-motion:reduce) { .music-record { animation:none !important; } }
 @container(max-width:300px) { .music-module { padding:18px; }.music-record { width:64px; height:64px; } }
 
-.music-auto { display:flex; align-items:center; gap:10px; margin:0 0 18px; font-size:13px; }.music-auto input { width:18px; height:18px; }.music-import { border:1px solid var(--line); border-radius:10px; padding:16px; margin:22px 0; }.music-import small { display:block; margin-top:12px; color:var(--muted); line-height:1.6; }.music-order { display:flex; gap:8px; margin:14px 0; }.music-bottom { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; }.music-mode { font-size:10px; color:var(--muted); }.music-source { font-size:11px; color:var(--violet); }.music-start { margin-left:auto; }
+.music-auto { display:flex; align-items:center; gap:10px; margin:0 0 18px; font-size:13px; }.music-auto input { width:18px; height:18px; }.music-import { border:1px solid var(--line); border-radius:10px; padding:16px; margin:22px 0; }.music-import small { display:block; margin-top:12px; color:var(--muted); line-height:1.6; }.music-order { display:flex; gap:8px; margin:14px 0; }.music-bottom { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; }.music-mode { font-size:11px; color:var(--muted); }.music-source { font-size:11px; color:var(--violet); }.music-start { margin-left:auto; }

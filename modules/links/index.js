@@ -9,7 +9,7 @@ export function validate(data = {}) {
   return { title: text(data.title, 100, '标题'), items: data.items.map(item => ({ label: text(item.label, 80, '链接名称'), url: safeLink(item.url) })) };
 }
 export function render(data) {
-  return `<article class="links-module"><h2>${escape(data.title)}</h2><div class="link-list">${data.items.map(item => `<a href="${escape(safeLink(item.url))}" target="_blank" rel="noopener noreferrer"><span>${escape(item.label)}</span><span aria-hidden="true">↗</span></a>`).join('')}</div></article>`;
+  return `<article class="links-module"><h2>${escape(data.title)}</h2><div class="link-list">${data.items.map(item => `<a href="${escape(safeLink(item.url))}" target="_blank" rel="noopener noreferrer"><span>${escape(item.label)}</span><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9"/></svg></a>`).join('')}</div></article>`;
 }
 export function edit({ data, change }) {
   const wrapper = fields(field('标题', data.title, value => change({ ...data, title: value }), { maxLength: 100 }));

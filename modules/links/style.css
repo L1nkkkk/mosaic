@@ -1,8 +1,10 @@
 .links-module { background:var(--white); border:1px solid var(--line); padding:24px; }
-.links-module h2 { font-size:18px; font-weight:600; line-height:1.5; margin-bottom:12px; overflow-wrap:anywhere; }
-.link-list a { display:flex; align-items:center; gap:16px; padding:16px 0; border-bottom:1px solid var(--line); font-size:14px; color:var(--muted); }
-.link-list a:last-child { border-bottom:0; padding-bottom:0; }
-.link-list a:hover { color:var(--violet); }
+.links-module h2 { font-size:20px; font-weight:650; line-height:1.4; letter-spacing:-.01em; margin-bottom:14px; overflow-wrap:anywhere; }
+.link-list { margin-inline:-12px; }
+.link-list a { position:relative; display:flex; align-items:center; gap:16px; padding:15px 12px; border-radius:10px; font-size:15px; color:var(--ink); transition:background .15s,color .15s; }
+.link-list a+a::before { content:''; position:absolute; inset:0 12px auto; border-top:1px solid var(--line); }
+.link-list a:hover,.link-list a:focus-visible { background:var(--violet-soft); color:var(--violet); }
+.link-list a:hover::before,.link-list a:hover+a::before,.link-list a:focus-visible::before,.link-list a:focus-visible+a::before { border-color:transparent; }
 .link-list a>span:first-child { flex:1; overflow-wrap:anywhere; }
-.link-list a>span:last-child { font-size:18px; }
-@container(max-width:400px) { .links-module { padding:24px; } }
+.link-list a>svg { flex:none; color:var(--muted); transition:transform .2s,color .15s; }
+.link-list a:hover>svg,.link-list a:focus-visible>svg { color:inherit; transform:translate(2px,-2px); }

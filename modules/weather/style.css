@@ -10,7 +10,7 @@
 .weather-forecast { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:22px; gap:8px; }
 .weather-forecast>div { display:flex; flex-direction:column; align-items:center; gap:10px; padding:12px 0; border-top:1px solid var(--line); font-size:12px; }
 .weather-forecast b { font-size:24px; color:var(--violet); }
-.weather-source { display:inline-block; margin-top:8px; font-size:9px; color:var(--muted); }
+.weather-source { display:inline-block; margin-top:8px; font-size:11px; color:var(--muted); }
 .weather-search { display:grid; gap:12px; }.weather-city-results { display:grid; gap:8px; }.weather-city-results button { white-space:normal; }
 @container(max-width:300px) { .weather-module { padding:18px; }.weather-current strong { font-size:44px; } }
 
