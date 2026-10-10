@@ -38,3 +38,11 @@ test('split module discovery never executes browser code in Node', async t => {
   const registry = await loadModules(directory);
   assert.equal(registry.get('browser-only').entry, 'client.js');
 });
+
+test('a module can reduce what Public receives without changing the saved content', async () => {
+  const { publicPage } = await import('../server/modules.js');
+  const registry = new Map([['board', { meta: { id: 'board', name: 'Board', layout: { span: 6, minWidth: 0 } }, validate: data => data, publicData: data => ({ stage: data.stage }) }]]);
+  const page = { title: 'Space', modules: [{ id: 'one', type: 'board', audience: 'public', visible: true, data: { stage: 'alpha', notes: 'INTERNAL' } }] };
+  assert.deepEqual(publicPage(page, registry).modules[0].data, { stage: 'alpha' });
+  assert.equal(page.modules[0].data.notes, 'INTERNAL');
+});

@@ -9,7 +9,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { AppearanceStore, MAX_BACKGROUND_BYTES } from './appearance.js';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { loadModules, initialPage, validatePage, publicPage, savePageDraft } from './modules.js';
+import { loadModules, initialPage, validatePage, publicPage, savePageDraft, syncLive } from './modules.js';
 import { PageStore, ConflictError } from './store.js';
 import { createAuth } from './auth.js';
 import { readStatus } from './status.js';
@@ -190,8 +190,8 @@ export async function createApp(config) {
             try { item.data = registry.get(item.type).validate(payload.data); }
             catch (error) { throw Object.assign(new Error(error.message), { status: 400 }); }
             if (Buffer.byteLength(JSON.stringify(state.draft)) > 120 * 1024) throw Object.assign(new Error('页面内容过大。'), { status: 413 });
-            // Only this instance's draft data changes. Publication is explicit.
-            return state;
+            // Only this instance's draft data changes. Publication is explicit, except for live modules.
+            return syncLive(state);
           });
           return json(response, 200, { page: validatePage(next.draft, registry), revision: next.revision, updatedAt: next.updatedAt });
         }
