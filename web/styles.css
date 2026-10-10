@@ -805,6 +805,7 @@ dialog::backdrop {
 .layout-resize:focus-visible { outline-offset:-4px; }
 .is-arranging { user-select:none; }
 .is-arranging .module-content { pointer-events:none; }
+.is-page-scrolling .module-content { pointer-events:none; }
 .is-dragging { opacity:.45; }
 .is-resizing>.module-frame { outline:2px solid var(--violet); outline-offset:2px; }
 .layout-ghost { position:fixed; top:0; left:0; z-index:80; pointer-events:none; padding:12px 18px; max-width:220px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; background:var(--violet); border:1px solid #7683de; color:white; border-radius:9px; box-shadow:0 8px 25px #36469a35; font-size:13px; }

@@ -2,9 +2,11 @@ import { mountShell, pageHeader } from './shell.js';
 import { createModuleHost } from './runtime.js';
 import { escape, field } from './ui.js';
 import { normalizeLayout, normalizeLayoutOverride, observeModuleLayout, sizeModuleFrame } from './layout.js';
+import { guardPageScroll } from './scroll.js';
 let attachLayoutEditor, reorderModules;
 
 const app = document.querySelector('#app');
+guardPageScroll();
 const definitions = new Map();
 let catalog = [];
 let state;
