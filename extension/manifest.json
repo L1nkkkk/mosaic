@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Mosaic Browser",
+  "version": "0.1.0",
+  "description": "Lets the Mosaic browser module open websites inside your own Mosaic page, using this browser's sign-ins.",
+  "minimum_chrome_version": "111",
+  "permissions": ["declarativeNetRequest", "webRequest", "storage", "cookies"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Mosaic Browser 设置" },
+  "options_ui": { "page": "options.html", "open_in_tab": false },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["core.js", "content-top.js"], "run_at": "document_start" },
+    { "matches": ["https://*/*"], "js": ["core.js", "content-frame.js"], "run_at": "document_start", "all_frames": true },
+    { "matches": ["https://*/*"], "js": ["content-frame-main.js"], "run_at": "document_start", "all_frames": true, "world": "MAIN" }
+  ]
+}
