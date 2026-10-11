@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Mihomo nodes every 6 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=6h
+RandomizedDelaySec=10min
+Unit=mihomo-subscription.service
+
+[Install]
+WantedBy=timers.target
