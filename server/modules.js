@@ -57,6 +57,7 @@ function validateSpaces(input, registry) {
   const spaces = input.spaces;
   if (!spaces || typeof spaces !== 'object' || Object.keys(spaces).sort().join() !== 'private,public') throw new Error('页面空间无效。');
   const types = new Map(input.modules.map(item => [item?.id, item?.type]));
+  const pages = validatePages(input.pages);
   const result = {};
   for (const name of ['public', 'private']) {
     const space = spaces[name];
@@ -70,9 +71,14 @@ function validateSpaces(input, registry) {
       if (name === 'public' && module?.meta.privateOnly) throw new Error(`${module.meta.name}只能在私人页显示。`);
       const layout = normalizeLayoutOverride(entry.layout);
       if (entry.appearance !== undefined && !['card', 'bare'].includes(entry.appearance)) throw new Error('模块外观无效。');
-      return { id: entry.id, ...(layout ? { layout } : {}), ...(entry.appearance ? { appearance: entry.appearance } : {}) };
+      // The first page is the default, so only the others are written down.
+      const elsewhere = name === 'private' && entry.page !== undefined && entry.page !== pages[0]?.id;
+      if (elsewhere && !pages.slice(1).some(page => page.id === entry.page)) throw new Error('模块所在的页面不存在。');
+      return { id: entry.id, ...(layout ? { layout } : {}), ...(entry.appearance ? { appearance: entry.appearance } : {}), ...(elsewhere && pages.length > 1 ? { page: entry.page } : {}) };
     });
-    result[name] = { ...(space.flow ? { flow: space.flow } : {}), items };
+    // A reader without pages shows all of Private at once, arranged like the first page.
+    const flow = name === 'private' && pages.length ? pages[0].flow : space.flow;
+    result[name] = { ...(flow ? { flow } : {}), items };
   }
   const shown = { public: new Map(result.public.items.map(entry => [entry.id, entry])), private: new Map(result.private.items.map(entry => [entry.id, entry])) };
   for (const item of input.modules) {
@@ -90,7 +96,22 @@ function validateSpaces(input, registry) {
   // Identical arrangements need no spaces; such pages keep the original shape.
   const same = result.public.flow === result.private.flow && result.private.items.length === order.length
     && JSON.stringify(result.public.items) === JSON.stringify(result.private.items.filter(entry => shown.public.has(entry.id)));
+  if (pages.length > 1) return { ...legacy, spaces: result, pages };
   return same ? legacy : { ...legacy, spaces: result };
+}
+
+// Private pages: an ordered list of tabs. Fewer than two means no tabs, which is not stored.
+function validatePages(input) {
+  if (input === undefined) return [];
+  if (!Array.isArray(input) || input.length > 12) throw new Error('私人空间最多分成 12 个页面。');
+  const seen = new Set();
+  return input.map(page => {
+    if (!page || typeof page.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,23}$/.test(page.id) || seen.has(page.id)) throw new Error('页面地址只能用小写字母、数字和连字符，且不能重复。');
+    seen.add(page.id);
+    if (typeof page.title !== 'string' || !page.title.trim() || page.title.length > 24) throw new Error('页面名称需要填写，最多 24 个字。');
+    if (page.flow !== undefined && !['grid', 'masonry'].includes(page.flow)) throw new Error('页面排列方式无效。');
+    return { id: page.id, title: page.title.trim(), ...(page.flow ? { flow: page.flow } : {}) };
+  });
 }
 
 export function initialPage(registry) {

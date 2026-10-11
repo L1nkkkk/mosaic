@@ -265,7 +265,7 @@ export async function createApp(config) {
           return json(response, 200, await store.mutate(payload.revision, state => ({ ...state, published: validatePage(state.draft, registry), publishedAt: new Date().toISOString() })));
         }
       }
-      if (method === 'GET' && ['/', '/public', '/public/', '/private', '/private/', '/edit', '/edit/', '/lab', '/lab/'].includes(route)) {
+      if (method === 'GET' && (['/', '/public', '/public/', '/private', '/private/', '/edit', '/edit/', '/lab', '/lab/'].includes(route) || /^\/private\/[a-z0-9][a-z0-9-]{0,23}\/?$/.test(route))) {
         const state = appearance.publicState(await appearance.read());
         const nonce = randomBytes(16).toString('base64');
         response.setHeader('Content-Security-Policy', response.getHeader('Content-Security-Policy').replace("style-src 'self'", `style-src 'self' 'nonce-${nonce}'`));

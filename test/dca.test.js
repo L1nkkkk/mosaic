@@ -65,7 +65,10 @@ test('search keeps only supported classes and maps funds and quotes to symbols',
 
 test('plan data is validated without depending on the current date', () => {
   const plan = { id: 'a1', symbol: 'quote:1.000300', name: '沪深300', kind: '指数', start: '2001-02-03', every: 'week' };
-  assert.deepEqual(validate({ title: ' 定投 ', plans: [{ ...plan, extra: 1 }] }), { title: '定投', plans: [plan] });
+  assert.deepEqual(validate({ title: ' 定投 ', plans: [{ ...plan, extra: 1 }] }), { title: '定投', show: ['tags', 'horizons', 'chart', 'note', 'averages'], plans: [plan] });
+  assert.deepEqual(validate({ title: '', show: ['averages', 'tags', 'tags'], plans: [] }).show, ['tags', 'averages']);
+  assert.deepEqual(validate({ title: '', show: [], plans: [] }).show, []);
+  assert.throws(() => validate({ title: '', show: ['everything'], plans: [] }));
   assert.equal(validate({ title: '', plans: [{ ...plan, kind: undefined }] }).plans[0].kind, '');
   for (const bad of [{ symbol: 'quote:x' }, { start: '2026-02-30' }, { start: '20260101' }, { every: 'day' }, { name: '' }, { id: 'A b' }])
     assert.throws(() => validate({ title: '', plans: [{ ...plan, ...bad }] }));
