@@ -24,7 +24,7 @@
 .dca-cost { stroke:var(--dca-cost); stroke-width:1; stroke-dasharray:3 3; }
 .dca-cursor { stroke:var(--dca-text); stroke-width:1; opacity:0; }
 .dca-chart:hover .dca-cursor { opacity:.5; }
-.dca-note { margin:8px 0 0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.dca-note { min-height:1.6em; margin:8px 0 0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .dca-foot { margin:0; padding-top:10px; border-top:1px solid var(--dca-rule); }
 .dca-tags { display:flex; flex-wrap:wrap; gap:4px; }
 .dca-tags:empty { display:none; }
@@ -43,6 +43,10 @@
 .dca-means dd { margin:0; font:11px/1.2 ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; }
 .dca-means .dca-diff { color:var(--dca-dim); }
 .dca-means [data-side="under"] .dca-diff { color:var(--dca-in); }
+.dca-foot[hidden] { display:none; }
+.dca-parts { display:grid; gap:8px; margin:0; padding:12px; border:1px solid var(--line); border-radius:8px; }
+.dca-part { display:flex; align-items:center; gap:8px; font-size:12px; }
+.dca-parts legend { padding:0 6px; font-size:12px; color:var(--muted); }
 .dca-editor-name { font-size:13px; }
 .dca-search { display:grid; gap:12px; }.dca-search-results { display:grid; gap:8px; }.dca-search-results button { white-space:normal; }
 @container (max-width:460px) { .dca-means { grid-template-columns:repeat(3,minmax(0,1fr)); } }

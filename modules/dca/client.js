@@ -1,5 +1,5 @@
 import { field, fields } from '../../web/ui.js';
-import { EVERY, planKey } from './plan.js';
+import { EVERY, PARTS, planKey } from './plan.js';
 export { validate } from './definition.js';
 
 const percent = value => `${value > 0 ? '+' : ''}${(value * 100).toFixed(2)}%`;
@@ -21,6 +21,13 @@ export function edit({ data: initial, change }) {
   let data = structuredClone(initial);
   const commit = (patch, refresh = false) => { data = { ...data, ...patch }; change(data, refresh); };
   const wrapper = fields(field('标题', data.title, title => commit({ title }), { maxLength: 100 }));
+  const parts = element('fieldset', 'dca-parts'); parts.append(element('legend', '', '每个标的显示'));
+  for (const [part, label] of Object.entries(PARTS)) {
+    const option = element('label', 'dca-part'), box = element('input', ''); box.type = 'checkbox'; box.checked = data.show.includes(part);
+    box.onchange = () => commit({ show: Object.keys(PARTS).filter(key => key === part ? box.checked : data.show.includes(key)) });
+    option.append(box, label); parts.append(option);
+  }
+  wrapper.append(parts);
   data.plans.forEach((plan, index) => {
     const patch = next => commit({ plans: data.plans.map((entry, i) => i === index ? { ...entry, ...next } : entry) });
     const row = fields(); row.classList.add('link-editor', 'dca-editor');
@@ -87,11 +94,11 @@ function chart(points, id, describe) {
   return svg;
 }
 
-function planRow(plan, entry, id, ui) {
+function planRow(plan, entry, id, ui, parts) {
   const key = planKey(plan), row = element('li', 'dca-plan'), value = entry?.key === key ? entry.value : null;
   const head = element('div', 'dca-head'), title = element('div', 'dca-title'), read = element('div', 'dca-read'), tags = element('div', 'dca-tags');
   const figure = element('strong', '', '—'), pill = element('span', 'dca-pill'), span = element('small', '', `${EVERY[plan.every]} · 自 ${plan.start}`), note = element('p', 'dca-note');
-  for (const tag of [plan.kind, value?.category, value?.tracks && `跟踪 ${value.tracks}`]) if (tag) tags.append(element('span', '', tag));
+  if (parts.has('tags')) for (const tag of [plan.kind, value?.category, value?.tracks && `跟踪 ${value.tracks}`]) if (tag) tags.append(element('span', '', tag));
   title.append(element('b', '', plan.name), tags, span); read.append(figure, pill); head.append(title, read); row.append(head);
   if (!value?.available) {
     row.dataset.state = 'idle';
@@ -107,11 +114,11 @@ function planRow(plan, entry, id, ui) {
     span.textContent = `${EVERY[plan.every]} · 自 ${view.start} · ${view.periods} 期`;
     const rest = view.signal ? `现价 ${amount(view.price)} 低于成本线 ${amount(view.cost)} · 已持续 ${daysBetween(view.since, view.asOf)} 天`
       : `现价 ${amount(view.price)} · 再跌 ${((1 - view.cost / view.price) * 100).toFixed(1)}% 触及成本线 ${amount(view.cost)}${view.lastSignal ? ` · 上次入场区 ${view.lastSignal}` : ''}`;
-    note.textContent = resting = `${rest} · 截至 ${view.asOf}${view.clamped ? ' · 最多回看 10 年' : ''}`;
-    stage.replaceChildren(chart(view.points, id, text => { note.textContent = text ?? resting; }));
+    note.textContent = resting = parts.has('note') ? `${rest} · 截至 ${view.asOf}${view.clamped ? ' · 最多回看 10 年' : ''}` : '';
+    if (parts.has('chart')) stage.replaceChildren(chart(view.points, id, text => { note.textContent = text ?? resting; }));
   }
   // The plan's own start comes with the resource; the fixed horizons only carry their totals until one is opened.
-  const options = [{ label: '自定', return: value.return, signal: value.signal, view: value }, ...(value.horizons || [])];
+  const options = [{ label: '自定', return: value.return, signal: value.signal, view: value }, ...(parts.has('horizons') && value.horizons || [])];
   async function select(option) {
     const mine = ++token; ui.picked.set(plan.id, option.label);
     for (const chip of chips.children) chip.setAttribute('aria-pressed', String(chip.dataset.label === option.label));
@@ -131,8 +138,11 @@ function planRow(plan, entry, id, ui) {
     chip.onclick = () => select(option); chips.append(chip);
   }
   show(value); select(options.find(option => option.label === ui.picked.get(plan.id)) || options[0]);
-  row.append(chips, stage, note);
-  if (value.averages?.length) {
+  // Without the note the line stays as the chart's hover readout; with neither there is nothing to say.
+  if (parts.has('horizons')) row.append(chips);
+  if (parts.has('chart')) row.append(stage);
+  if (parts.has('chart') || parts.has('note')) row.append(note);
+  if (parts.has('averages') && value.averages?.length) {
     const means = element('dl', 'dca-means');
     for (const item of value.averages) {
       const cell = element('div', ''); cell.dataset.side = item.diff < 0 ? 'under' : 'over';
@@ -152,7 +162,7 @@ export function mount(context) {
   const ui = { picked: new Map(), fetched: new Map(), request: context.request };
   let signature = '';
   return { update(data, resource) {
-    const results = resource?.value?.results || {}, next = JSON.stringify([data, results, resource?.error]);
+    const results = resource?.value?.results || {}, parts = new Set(data.show), next = JSON.stringify([data, results, resource?.error]);
     if (next === signature) return; // A refresh with identical data keeps the hovered chart intact.
     signature = next;
     card.querySelector('h2').textContent = data.title;
@@ -160,6 +170,7 @@ export function mount(context) {
     const signals = live.filter(value => value.signal).length;
     card.querySelector('.dca-summary').textContent = !data.plans.length ? '在编辑台添加要跟踪的标的' : resource?.error ? '行情暂时无法读取' : !live.length ? '' : signals ? `${signals} / ${live.length} 适合入场` : '暂无入场信号';
     card.dataset.signal = signals ? 'on' : 'off';
-    card.querySelector('.dca-list').replaceChildren(...data.plans.map(plan => planRow(plan, results[plan.id], `dca-${context.id}-${plan.id}`, ui)));
+    card.querySelector('.dca-list').replaceChildren(...data.plans.map(plan => planRow(plan, results[plan.id], `dca-${context.id}-${plan.id}`, ui, parts)));
+    card.querySelector('.dca-foot').hidden = !parts.has('chart') && !parts.has('averages');
   } };
 }

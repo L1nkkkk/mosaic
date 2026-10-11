@@ -1,5 +1,7 @@
 // Shared by the server definition, the data route and the client. No DOM access here.
 export const EVERY = { week: '每周', month: '每月' };
+// The parts of a row an instance may show; with none of them a row is just the name, the return and the signal.
+export const PARTS = { tags: '类别标签', horizons: '定投时长对比', chart: '走势图', note: '文字说明', averages: '各时段均价' };
 const SYMBOL = /^(fund:\d{6}|quote:\d{1,3}\.[A-Za-z0-9]{1,12})$/;
 
 export function symbol(value) {
