@@ -19,9 +19,10 @@ import urllib.request
 def atomic_json(filename, value, mode=0o644):
     fd, name = tempfile.mkstemp(prefix='.status-', dir=filename.parent)
     try:
-        with os.fdopen(fd, 'w') as output:
+        with os.fdopen(fd, 'w', encoding='utf-8') as output:
             os.fchmod(output.fileno(), mode)
-            json.dump(value, output)
+            # Mihomo parses the probe config as YAML, which rejects JSON's escaped surrogate pairs in emoji node names.
+            json.dump(value, output, ensure_ascii=False)
             output.flush()
             os.fsync(output.fileno())
         os.replace(name, filename)

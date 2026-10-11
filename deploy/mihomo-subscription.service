@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh Mihomo nodes from the subscription
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/mosaic/update-proxies.py
+TimeoutStartSec=300
+Nice=15
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/mihomo/state
+PrivateTmp=true

@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Mihomo nodes daily; the path unit covers sudden outages
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=24h
+RandomizedDelaySec=30min
+Unit=mihomo-subscription.service
+
+[Install]
+WantedBy=timers.target
