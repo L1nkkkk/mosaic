@@ -468,7 +468,7 @@ Shadow DOM 只隔离样式，不隔离权限。当前模块仍是经维护者审
 
 - `modules/weather/`：`load({ request, data })` 按实例城市获取缓存资源；`cityKey` 防止编辑城市后展示旧城市的响应。
 - `modules/music/`：持久 `<audio>` 实例；内容更新先比较音频地址，只有换曲时才 `load()`。`dispose()` 负责暂停并释放音频源，不在每次 `update()` 重建播放器。
-- `modules/books/`：按书籍 ID 复用 DOM，支持本地上传封面、阅读状态和可选链接。
+- `modules/books/`：拟物书柜。按书籍 ID 复用书脊按钮，颜色和尺寸由 ID 推算；层板是容器上一张按行高重复的背景，每本书用上外边距把自己补到行高，所以换行不需要脚本。抽出的书只是 `aria-expanded` 加 `transform`，详情在同一个实例里更新。
 - `modules/photo/`：`object-fit: cover` 配合独立裁切字段；图片和遮罩留在模块内，外框尺寸由核心提供。
 - `modules/visitors/`：只读统计资源，持久 SVG、更新标记与数值；空数据与接口失败分别显示。
 
