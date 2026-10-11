@@ -1,5 +1,6 @@
 import { field, fields } from '../../web/ui.js';
 import { mediaField, imageElement } from '../media.js';
+import { browserAvailable, openInBrowser } from '../handoff.js';
 export { validate } from './definition.js';
 const labels = { want: '想读', reading: '在读', done: '已读' };
 export function edit({ data: initial, change }) {
@@ -24,7 +25,7 @@ const CLOTH = ['#7a2f2a', '#2f4a6b', '#3f5a3a', '#6b4a2a', '#4a3560', '#8a6a2a',
 function seed(text) { let value = 2166136261; for (const character of text) value = Math.imul(value ^ character.codePointAt(0), 16777619); return value >>> 0; }
 export function mount(context) {
   const card = document.createElement('article'); card.className = 'books-module'; card.dataset.ownBackground = '';
-  card.innerHTML = '<h2></h2><div class="books-shelf"><div class="books-decor" aria-hidden="true"></div></div><p class="books-empty">在编辑台放入你的第一本书。</p><section class="book-detail" aria-live="polite" hidden><div class="book-detail-cover"><img alt=""><span></span></div><div class="book-detail-text"><span class="book-status"></span><h3></h3><small></small><p></p><a target="_blank" rel="noopener noreferrer">打开链接 ↗</a></div></section>';
+  card.innerHTML = '<h2></h2><div class="books-shelf"><div class="books-decor" aria-hidden="true"></div></div><p class="books-empty">在编辑台放入你的第一本书。</p><section class="book-detail" aria-live="polite" hidden><div class="book-detail-cover"><img alt=""><span></span></div><div class="book-detail-text"><span class="book-status"></span><h3></h3><small></small><p></p><a target="_blank" rel="noopener noreferrer">打开链接 ↗</a><button type="button" class="book-open-here">在浏览器模块里打开</button></div></section>';
   context.root.append(card);
   const rows = new Map(), shelf = card.querySelector('.books-shelf'), detail = card.querySelector('.book-detail');
   shelf.firstElementChild.innerHTML = DECOR;
@@ -42,6 +43,8 @@ export function mount(context) {
     detail.querySelector('.book-status').textContent = labels[book.status]; detail.querySelector('.book-status').dataset.status = book.status;
     detail.querySelector('h3').textContent = book.title || '未命名'; detail.querySelector('small').textContent = book.author; detail.querySelector('p').textContent = book.note;
     const link = detail.querySelector('a'); link.hidden = !book.url; if (book.url) link.href = book.url; else link.removeAttribute('href');
+    // Offered only where a browser module shares the page, which visitors never have.
+    const here = detail.querySelector('.book-open-here'); here.hidden = !book.url.startsWith('https://') || !browserAvailable(); here.onclick = () => openInBrowser(book.url);
   }
   return { update(data) {
     books = data.items;

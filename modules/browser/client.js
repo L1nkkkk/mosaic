@@ -1,4 +1,5 @@
 import { field, fields } from '../../web/ui.js';
+import { receiveAddresses } from '../handoff.js';
 import { resolveAddress } from './address.js';
 export { validate } from './definition.js';
 
@@ -107,6 +108,8 @@ export function mount(context) {
     else if (message.url !== trail[index]) { trail.length = index + 1; trail.push(message.url); index++; }
     current(message.url);
   }, { signal: context.signal });
+  // Another module on the page asked to open an address here; that counts as asking to load.
+  receiveAddresses(url => { started = true; visit(url); card.scrollIntoView({ block: 'nearest', behavior: context.reducedMotion ? 'auto' : 'smooth' }); }, context.signal);
   // The extension marks the page once its rules are active, possibly after this module mounted.
   const marker = new MutationObserver(() => { if (extension() && !frame && index >= 0) load(trail[index]); });
   marker.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mosaic-browser'] });
