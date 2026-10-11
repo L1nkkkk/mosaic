@@ -1,6 +1,6 @@
 import { text, safeLink } from '../../web/ui.js';
 import { mediaUrl } from '../media.js';
-export const meta = { id: 'books', name: '书单', version: 1, layout: { span: 6, minWidth: 260 }, description: '封面、作者、阅读状态与简短推荐，可添加书籍链接。', defaultData: { title: '书架', items: [] } };
+export const meta = { id: 'books', name: '书单', version: 1, layout: { span: 6, minWidth: 260 }, description: '一个木书柜：书脊朝外立在层板上，在读的书封面朝外，点一本抽出来看推荐语。', defaultData: { title: '书架', items: [] } };
 export function validate(data = {}) {
   if (!Array.isArray(data.items) || data.items.length > 16) throw new Error('书单最多 16 本。');
   const seen = new Set();

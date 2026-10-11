@@ -1,7 +1,36 @@
-.books-module { padding:24px; background:var(--white); border:1px solid var(--line); }
-.books-module h2 { font-size:17px; margin:0 0 22px; }.books-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:20px 16px; }
-.book-item { min-width:0; }.book-cover { display:grid; place-items:center; position:relative; aspect-ratio:2/3; overflow:hidden; border:1px solid var(--line); border-radius:3px 8px 8px 3px; background:linear-gradient(110deg,#191c29 0 5%,#495271 6%,#25283c 14%,#424b66); color:#eeeaf8; box-shadow:4px 6px 12px #0002; }
-.book-cover img { width:100%; height:100%; object-fit:cover; position:absolute; inset:0; }.book-cover span { padding:14px; font-family:Georgia,serif; font-size:17px; text-align:center; overflow-wrap:anywhere; }
-.book-status { display:inline-block; margin-top:12px; padding:3px 6px; border-radius:4px; font-size:11px; background:var(--violet-soft); color:var(--violet); }
-.book-item h3 { margin:8px 0 5px; font-size:13px; overflow-wrap:anywhere; }.book-item small { font-size:11px; color:var(--muted); }.book-item p { font-size:11px; color:var(--muted); line-height:1.7; margin-top:8px; white-space:pre-wrap; overflow-wrap:anywhere; }.books-empty { font-size:13px; color:var(--muted); min-height:130px; display:grid; place-items:center; }
-@container(min-width:650px) { .books-list { grid-template-columns:repeat(auto-fill,minmax(115px,1fr)); } }
+/* A walnut bookcase in both themes: the module keeps its own materials. */
+.books-module { --row:160px; --board:16px; padding:20px 22px 22px; background:linear-gradient(#3b2516,#291a0f); border:1px solid #170e07; color:#f1e6d6; }
+.books-module h2 { margin:0 0 14px; font:600 15px/1.3 Georgia,"Songti SC","Noto Serif SC",serif; letter-spacing:.08em; color:#e9d9bf; overflow-wrap:anywhere; }
+/* Every flex line is exactly one row tall, so one repeating tile draws the board under each line and its shadow on the next. */
+.books-shelf { display:flex; flex-wrap:wrap; align-items:flex-end; gap:var(--board) 3px; padding:0 14px var(--board); border-radius:4px; background-color:#1b110a;
+  background-image:linear-gradient(#0009,#0000 22px),linear-gradient(to bottom,#0000 var(--row),#a8764a var(--row),#7a5030 calc(var(--row) + 3px),#5a3a22 calc(var(--row) + var(--board) - 2px),#170e07 calc(var(--row) + var(--board)));
+  background-size:100% calc(var(--row) + var(--board)); box-shadow:inset 0 0 0 1px #0007,inset 12px 0 18px -12px #000a,inset -12px 0 18px -12px #000a; }
+.books-shelf[hidden],.book-detail[hidden],.books-module [hidden] { display:none; }
+.book { position:relative; flex:none; width:var(--book-w); height:var(--book-h); margin:calc(var(--row) - var(--book-h)) 0 0; padding:0; border:0; border-radius:2px 2px 1px 1px; overflow:hidden; cursor:pointer; color:#f3e9d2; font:inherit;
+  background:linear-gradient(90deg,#0006,#fff2 18%,#0000 42%,#0004),linear-gradient(#0000 10px,#e8c97a66 10px 11px,#0000 11px),var(--book-cloth); box-shadow:1px 0 0 #0005; transition:transform .18s ease; }
+.book:hover,.book:focus-visible { transform:translateY(-8px); }
+.book[aria-expanded="true"] { transform:translateY(-16px); }
+.book:focus-visible { outline:2px solid #e8c97a; outline-offset:2px; }
+.book img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.book-name { position:absolute; inset:18px 0 22px; display:grid; place-items:center; writing-mode:vertical-rl; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font:600 12px/1 Georgia,"Songti SC","Noto Serif SC",serif; letter-spacing:.06em; }
+/* Read books carry a gilt band near the foot of the spine. */
+.book[data-status="done"]::after { content:""; position:absolute; inset:auto 0 9px; height:5px; border-block:1px solid #e8c97a; }
+/* The book being read faces out, with a ribbon marking the place. */
+.book[data-status="reading"] { width:var(--face-w,100px); height:var(--face-h,150px); margin-top:calc(var(--row) - var(--face-h,150px)); overflow:visible; border-radius:2px 5px 5px 2px; background:linear-gradient(90deg,#0007,#fff2 5%,#0000 12%),var(--book-cloth); box-shadow:3px 0 0 #e9dfcc,4px 0 0 #0006,6px 4px 10px #0007; }
+.book[data-status="reading"] img { border-radius:inherit; }
+.book[data-status="reading"] .book-name { inset:14px 10px; writing-mode:horizontal-tb; white-space:normal; overflow-wrap:break-word; text-align:center; font-size:13px; line-height:1.4; }
+.book[data-status="reading"]::before { content:""; position:absolute; z-index:1; top:-5px; right:16px; width:9px; height:38px; background:#b8392e; clip-path:polygon(0 0,100% 0,100% 100%,50% 82%,0 100%); box-shadow:inset -2px 0 #0003; }
+.books-empty { display:grid; place-items:center; min-height:130px; margin:0; font-size:13px; color:#bca88c; }
+.book-detail { display:grid; grid-template-columns:84px minmax(0,1fr); gap:16px; margin-top:16px; padding:14px; border:1px solid #0007; border-radius:6px; background:#1b110a; }
+.book-detail-cover { position:relative; display:grid; place-items:center; aspect-ratio:2/3; overflow:hidden; border-radius:2px 5px 5px 2px; background:linear-gradient(90deg,#0007,#fff2 5%,#0000 12%),var(--book-cloth); box-shadow:4px 5px 10px #0008; }
+.book-detail-cover img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.book-detail-cover span { padding:8px; font:600 12px/1.4 Georgia,"Songti SC","Noto Serif SC",serif; text-align:center; overflow-wrap:anywhere; }
+.book-detail-text { min-width:0; }
+.book-status { display:inline-block; padding:2px 7px; border:1px solid #e8c97a66; border-radius:3px; font-size:10px; color:#e8c97a; }
+.book-status[data-status="reading"] { border-color:#b8392e; background:#b8392e; color:#fff3ea; }
+.book-detail h3 { margin:8px 0 4px; font:600 15px/1.35 Georgia,"Songti SC","Noto Serif SC",serif; color:#f1e6d6; overflow-wrap:anywhere; }
+.book-detail small { font-size:11px; color:#bca88c; }
+.book-detail p { margin:8px 0 0; font-size:12px; line-height:1.75; color:#d8c8ae; white-space:pre-wrap; overflow-wrap:anywhere; }
+.book-detail a { display:inline-block; margin-top:10px; font-size:11px; color:#e8c97a; }
+@container (max-width:340px) { .books-module { --row:140px; padding:16px 14px 18px; }.books-shelf { padding-inline:10px; }.books-module { --face-w:88px; --face-h:132px; }.book-detail { grid-template-columns:64px minmax(0,1fr); gap:12px; } }
+@media (prefers-reduced-motion:reduce) { .book { transition:none; } }

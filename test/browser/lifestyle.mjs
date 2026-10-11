@@ -36,6 +36,12 @@ await withBrowser(async ({ app, base, command, evaluate, waitFor }) => {
   await waitFor(`document.querySelector('.weather-current strong')?.textContent === '21°' && document.querySelector('.music-module audio')`);
   assert.equal(await evaluate('Boolean(document.querySelector(".module-error"))'),false);
   await waitFor(`document.querySelector('.photo-module img')?.naturalWidth > 0`);
+  // The bookcase: the book being read faces out with its cover, and a click pulls a book out and describes it.
+  assert.deepEqual(await evaluate(`[...document.querySelectorAll('.books-shelf .book')].map(book=>[book.dataset.status,book.offsetWidth>60,!book.querySelector('img').hidden])`),[['reading',true,true],['want',false,false]]);
+  await evaluate(`document.querySelectorAll('.books-shelf .book')[1].click()`);
+  assert.deepEqual(await evaluate(`[document.querySelector('.book-detail').hidden,document.querySelector('.book-detail h3').textContent,document.querySelectorAll('.book')[1].getAttribute('aria-expanded'),document.querySelector('#module-editor').open]`),[false,'下一本书','true',false]);
+  await evaluate(`document.querySelectorAll('.books-shelf .book')[1].click()`);
+  assert.equal(await evaluate(`document.querySelector('.book-detail').hidden`),true);
   await evaluate(`window.savedAudio=document.querySelector('audio');savedAudio.load()`);
   await waitFor('savedAudio.readyState >= 2');
   const play = await command('Runtime.evaluate',{expression:'savedAudio.currentTime=5;savedAudio.play().then(()=>true)',awaitPromise:true,returnByValue:true,userGesture:true});
