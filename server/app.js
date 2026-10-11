@@ -2,6 +2,7 @@ import { MediaStore, mediaReferences, MAX_MEDIA_BYTES } from './media.js';
 import { musicProvider, songId } from './music.js';
 import { neteaseId } from '../modules/music/source.js';
 import { weatherProvider, coordinates } from './weather.js';
+import { dcaProvider } from './dca.js';
 import { Visitors } from './visitors.js';
 import http from 'node:http';
 import { historyReader } from './history.js';
@@ -35,6 +36,7 @@ export async function createApp(config) {
   const loginAttempts = new Map();
   const media = new MediaStore(dataDirectory);
   const weather = weatherProvider(config.externalFetch);
+  const dca = dcaProvider(config.externalFetch);
   const music = musicProvider(config.externalFetch);
   const visitors = new Visitors(dataDirectory, config.sessionSecret, config.externalFetch);
   const games = new Games(dataDirectory, config.sessionSecret, config.gameFetch);
@@ -177,6 +179,11 @@ export async function createApp(config) {
         if (route === '/api/private/games/refresh' && method === 'POST') return json(response, 200, await games.read(true));
         if (route === '/api/private/games/account' && method === 'PUT') return json(response, 200, await gameQr.configure(await body(request)));
         if (route === '/api/private/history' && method === 'GET') return json(response, 200, await readHistory(url.searchParams));
+        if (route === '/api/private/dca' && method === 'GET') {
+          const plan = dca.read(url.searchParams.get('symbol'), url.searchParams.get('start'), url.searchParams.get('every'));
+          try { return json(response, 200, await plan); }
+          catch { return json(response, 503, { error: '行情暂时读取不到，稍后会自动重试。' }); }
+        }
         if (route === '/api/private/proxies' && method === 'GET') return json(response, 200, await readProxies(config.proxyStatusFile));
         if (route === '/api/private/page' && method === 'GET') {
           const state = await store.read();
@@ -209,6 +216,12 @@ export async function createApp(config) {
           if (!name || name.length < 2 || name.length > 80) return json(response, 400, { error: '请输入 2–80 个字的城市名称。' });
           try { return json(response, 200, await weather.search(name)); }
           catch { return json(response, 503, { error: '城市搜索暂时不可用，请稍后重试。' }); }
+        }
+        if (route === '/api/admin/securities' && method === 'GET') {
+          const name = url.searchParams.get('name')?.trim();
+          if (!name || name.length < 2 || name.length > 40) return json(response, 400, { error: '请输入 2–40 个字的名称或代码。' });
+          try { return json(response, 200, await dca.search(name)); }
+          catch { return json(response, 503, { error: '标的搜索暂时不可用，请稍后重试。' }); }
         }
         if (route === '/api/admin/media' && method === 'POST') {
           if (mediaUploads >= 2) return json(response, 429, { error: '有素材正在上传，请稍后再试。' });

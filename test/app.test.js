@@ -617,3 +617,27 @@ test('live modules publish their own content at once, and only where they are al
   state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: placed } })).value;
   assert.ok(!(await f.request('/mosaic/api/page')).text.includes('PRIVATE-LIVE-NOTE'));
 });
+
+test('the DCA signal is private, validates its query and hides upstream failures', async t => {
+  let calls = 0, fail = false;
+  const externalFetch = async url => {
+    calls++; if (fail) return new Response('', { status: 500 });
+    if (String(url).includes('searchapi')) return Response.json({ QuotationCodeTable: { Data: [{ Code: '000300', Name: '沪深300', Classify: 'Index', QuoteID: '1.000300' }] } });
+    return Response.json({ data: { klines: ['2026-01-05,10', '2026-01-12,20', '2026-01-19,10'] } });
+  };
+  const f = await fixture(t, { externalFetch }), cookie = await f.login();
+  const route = '/mosaic/api/private/dca?symbol=quote:1.000300&start=2026-01-05&every=week';
+  assert.equal((await f.request(route)).status, 401);
+  assert.equal((await f.request('/mosaic/api/admin/securities?name=300')).status, 401);
+  assert.ok(!(await f.request('/mosaic/api/modules')).value.modules.some(module => module.id === 'dca'));
+  assert.equal(calls, 0);
+  const reply = await f.request(route, { cookie });
+  assert.deepEqual([reply.status, reply.value.signal, reply.value.periods, reply.value.asOf], [200, true, 3, '2026-01-19']);
+  for (const bad of ['symbol=quote:evil.test/x&start=2026-01-05&every=week', 'symbol=quote:1.000300&start=nope&every=week', 'symbol=quote:1.000300&start=2026-01-05&every=day'])
+    assert.equal((await f.request(`/mosaic/api/private/dca?${bad}`, { cookie })).status, 400);
+  assert.equal(calls, 1);
+  assert.deepEqual((await f.request('/mosaic/api/admin/securities?name=300', { cookie })).value.items, [{ symbol: 'quote:1.000300', name: '沪深300', code: '000300', kind: '指数' }]);
+  assert.equal((await f.request('/mosaic/api/admin/securities?name=3', { cookie })).status, 400);
+  fail = true;
+  assert.equal((await f.request('/mosaic/api/private/dca?symbol=fund:110020&start=2026-01-05&every=week', { cookie })).status, 503);
+});
