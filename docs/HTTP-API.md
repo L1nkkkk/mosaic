@@ -278,3 +278,10 @@ state = await requestJSON('admin/publish', 'POST', {
 新增 `GET private/games`、`POST private/games/refresh` 和 `PUT private/games/account`。所有接口要求登录；写入要求同源 Origin。凭据独立加密存储，不包含在页面 API 中。完整请求格式、缓存策略和状态含义见[游戏状态说明](GAMES.md)。
 
 游戏扫码绑定：`POST /api/private/games/qr/start` 接收 `{ provider }`，`POST /api/private/games/qr/status` 与 `/cancel` 接收 `{ id }`。需要管理员会话与同源 Origin，二维码仅在创建响应中返回，查询响应不包含授权凭据。详见 [游戏状态](GAMES.md)。
+
+## 定投信号接口（0.16）
+
+- `GET /api/private/dca?symbol=quote:1.000300&start=2025-01-02&every=week`：必须登录。`symbol` 只接受 `fund:<6 位基金代码>` 或 `quote:<市场号>.<代码>`，`every` 为 `week` 或 `month`，参数不合规返回 400。返回 `{available,start,asOf,periods,price,cost,return,signal,since,lastSignal,clamped,fetchedAt,points,horizons,averages,category,tracks}`：`cost` 是定投平均成本，`return` 是 `price / cost - 1`，`signal` 表示至少两期之后收益不高于 0；`points` 是最多 200 个 `[日期, 价格, 成本]`。起点最多回看 10 年，被截断时 `clamped:true`。起点之后没有行情时返回 `{available:false, reason}`。`horizons` 是同一频率从最新行情日往前 1、2、3、5 年开始的结果 `[{label,start,periods,cost,return,signal}]`，不带 `points`，需要曲线时用它的 `start` 再请求一次；`averages` 是近 1 周、1 月、3 月、6 月、1 年、2 年收盘价的算术平均 `[{label,mean,diff}]`，`diff` 为现价相对均价的偏离。历史不足以覆盖的时长和窗口不返回。`category` 和 `tracks` 只对场外基金有值（基金类型、跟踪指数），读取失败时为空字符串。
+- `GET /api/admin/securities?name=沪深300`：管理员；2～40 字的名称或代码，返回 `{ items: [{symbol,name,code,kind}] }`，最多 8 项，只保留指数、场内基金、场外基金、A 股、港股和美股。
+
+行情来自东方财富的固定地址：指数、ETF 和股票用前复权日线，场外基金用单位净值并按公布的日增长率还原分红与拆分。每个标的的 10 年行情缓存 30 分钟，同一标的的所有计划、时长和均价都从这一份计算；基金类型缓存 24 小时，搜索缓存 1 小时；上游失败返回 503，不返回原始响应。

@@ -1,0 +1,49 @@
+/* A dark trading-desk panel in both themes: the module keeps its own palette. */
+.dca-module { --dca-ground:#0f1614; --dca-text:#e6efe9; --dca-dim:#7f918a; --dca-rule:#22302b; --dca-in:#43e0a0; --dca-cost:#f0b757; min-width:0; padding:22px 24px 18px; background:var(--dca-ground); color:var(--dca-text); border:1px solid var(--dca-rule); }
+.dca-module header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.dca-module h2 { margin:0; font-size:15px; font-weight:600; color:var(--dca-text); overflow-wrap:anywhere; }
+.dca-summary { flex:none; font-size:11px; color:var(--dca-dim); }
+.dca-module[data-signal="on"] .dca-summary { color:var(--dca-in); }
+.dca-list { list-style:none; margin:14px 0 0; padding:0; }
+.dca-plan { padding:14px 0 12px; border-top:1px solid var(--dca-rule); }
+.dca-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+.dca-title { min-width:0; display:grid; gap:4px; }
+.dca-title b { font-size:13px; font-weight:600; overflow-wrap:anywhere; }
+.dca-title small,.dca-note,.dca-foot { font-size:11px; line-height:1.6; color:var(--dca-dim); }
+.dca-read { flex:none; display:grid; justify-items:end; gap:6px; }
+.dca-read strong { font:500 24px/1 ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.dca-pill { padding:3px 8px; border:1px solid var(--dca-rule); border-radius:999px; font-size:10px; color:var(--dca-dim); }
+.dca-pill:empty { display:none; }
+.dca-plan[data-state="in"] .dca-read strong { color:var(--dca-in); }
+.dca-plan[data-state="in"] .dca-pill { border-color:transparent; background:var(--dca-in); color:var(--dca-ground); font-weight:600; }
+.dca-chart { display:block; width:100%; height:64px; margin-top:10px; overflow:visible; cursor:crosshair; touch-action:pan-y; }
+.dca-chart path,.dca-chart line { fill:none; vector-effect:non-scaling-stroke; }
+.dca-price { stroke:#55665f; stroke-width:1.5; stroke-linejoin:round; }
+.dca-price.is-under { stroke:var(--dca-in); }
+.dca-chart .dca-zone { fill:var(--dca-in); fill-opacity:.16; }
+.dca-cost { stroke:var(--dca-cost); stroke-width:1; stroke-dasharray:3 3; }
+.dca-cursor { stroke:var(--dca-text); stroke-width:1; opacity:0; }
+.dca-chart:hover .dca-cursor { opacity:.5; }
+.dca-note { margin:8px 0 0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.dca-foot { margin:0; padding-top:10px; border-top:1px solid var(--dca-rule); }
+.dca-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.dca-tags:empty { display:none; }
+.dca-tags span { padding:2px 6px; border-radius:4px; background:var(--dca-rule); font-size:10px; color:#a9bab2; }
+.dca-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+.dca-chip { display:grid; gap:4px; min-width:58px; padding:6px 9px; border:1px solid var(--dca-rule); border-radius:8px; background:none; color:var(--dca-dim); font:inherit; font-size:10px; text-align:left; cursor:pointer; transition:border-color .15s,background-color .15s; }
+.dca-chip b { font:500 12px/1 ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; font-variant-numeric:tabular-nums; color:var(--dca-text); }
+.dca-chip[data-signal="in"] b { color:var(--dca-in); }
+.dca-chip:hover { border-color:#3a4d45; }
+.dca-chip[aria-pressed="true"] { border-color:var(--dca-text); background:#18221f; color:var(--dca-text); }
+.dca-chip:focus-visible { outline:2px solid var(--dca-in); outline-offset:2px; }
+.dca-stage { min-height:74px; }
+.dca-means { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:1px; margin:10px 0 0; border:1px solid var(--dca-rule); border-radius:8px; background:var(--dca-rule); overflow:hidden; }
+.dca-means div { display:grid; gap:3px; padding:7px 8px; background:var(--dca-ground); min-width:0; }
+.dca-means dt { font-size:10px; color:var(--dca-dim); }
+.dca-means dd { margin:0; font:11px/1.2 ui-monospace,"SF Mono","Cascadia Mono",Consolas,monospace; font-variant-numeric:tabular-nums; overflow:hidden; text-overflow:ellipsis; }
+.dca-means .dca-diff { color:var(--dca-dim); }
+.dca-means [data-side="under"] .dca-diff { color:var(--dca-in); }
+.dca-editor-name { font-size:13px; }
+.dca-search { display:grid; gap:12px; }.dca-search-results { display:grid; gap:8px; }.dca-search-results button { white-space:normal; }
+@container (max-width:460px) { .dca-means { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@container (max-width:340px) { .dca-module { padding:18px 16px 14px; }.dca-read strong { font-size:20px; } }
