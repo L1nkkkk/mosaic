@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh Mihomo nodes when the egress probe finds most of them dead
+
+[Path]
+PathChanged=/var/lib/mosaic/monitor/.refresh-nodes
+Unit=mihomo-subscription.service
+
+[Install]
+WantedBy=paths.target

@@ -57,6 +57,20 @@ def observe(previous, result, at, identity):
     return entry
 
 
+def request_refresh(flag, rows, at, cooldown=3600):
+    """When most nodes are dead the list itself is probably stale: ask the subscription updater, hourly at most."""
+    if not rows or sum(bool(row['reachable']) for row in rows) * 2 >= len(rows):
+        return False
+    try:
+        if at - flag.stat().st_mtime < cooldown:
+            return False
+    except OSError:
+        pass
+    # A systemd path unit watches this file; the sandboxed collector never touches the proxy config itself.
+    flag.write_text(now())
+    return True
+
+
 def curl_json(proxy, credentials, url):
     raw = subprocess.check_output(['curl', '--silent', '--fail', '--max-time', '10', '--connect-timeout', '5',
         '--max-filesize', '65536', '--proxy', proxy, '--proxy-user', credentials, '--noproxy', '', url],
@@ -150,6 +164,8 @@ def collect(args):
         atomic_json(directory / 'proxy-history.json', next_history, 0o600)
         atomic_json(directory / 'proxies.json', {'schemaVersion': 1, 'collectedAt': now(), 'groups': groups, 'nodes': rows})
         print(f'Collected {len(rows)} nodes; {sum(row["reachable"] for row in rows)} egress checks succeeded.')
+        if request_refresh(directory / '.refresh-nodes', rows, time.time()):
+            print('Most nodes are unreachable; requested a subscription refresh.')
 
 
 if __name__ == '__main__':

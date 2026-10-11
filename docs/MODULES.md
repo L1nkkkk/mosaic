@@ -348,7 +348,7 @@ sudo systemctl start mosaic-proxies.service
 sudo systemctl enable --now mosaic-proxies.timer
 ```
 
-节点列表本身由 `deploy/update-proxies.py` 保持最新（可选）：把订阅地址写入仅 root 可读的 `/etc/mihomo-subscription.url`，安装 `mihomo-subscription.service` / `.timer` 后每 6 小时拉取一次。脚本只替换 `proxies` 和各分组的成员，端口、规则和分组参数保持不变；丢弃订阅里不以国旗开头的提示条目；少于 5 个节点、拉取失败或 `mihomo -t` 校验不通过时保留原配置。替换前备份为 `config.yaml.before-subscription-<时间>`（保留 5 份），用 SIGHUP 重载，节点未生效则回滚。`--dry-run` 只报告变化，不写入配置。节点沿用订阅里的名称，名称不变时探测历史得以延续。
+节点列表本身由 `deploy/update-proxies.py` 保持最新（可选）：把订阅地址写入仅 root 可读的 `/etc/mihomo-subscription.url`，安装 `mihomo-subscription.service`、`.timer` 和 `.path` 后每天拉取一次；出口探测发现超过半数节点不可达时会写入 `monitor/.refresh-nodes`（每小时最多一次），路径单元据此立即触发更新，探测脚本本身不接触代理配置。脚本只替换 `proxies` 和各分组的成员，端口、规则和分组参数保持不变；丢弃订阅里不以国旗开头的提示条目；少于 5 个节点、拉取失败或 `mihomo -t` 校验不通过时保留原配置。替换前备份为 `config.yaml.before-subscription-<时间>`（保留 5 份），用 SIGHUP 重载，节点未生效则回滚。`--dry-run` 只报告变化，不写入配置。节点沿用订阅里的名称，名称不变时探测历史得以延续。
 
 网页通过已有 `/status` 只读挂载读取 `proxies.json`，默认文件可用 `PROXY_STATUS_FILE` 覆盖。Web 容器不接触 Docker 管理接口、Mihomo 配置或控制接口。接口独立鉴权与字段白名单，详见 HTTP 参考。已存在的页面部署代码后，需要添加一个“代理节点”实例并保存，无需发布公开页。
 
