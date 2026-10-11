@@ -641,3 +641,20 @@ test('the DCA signal is private, validates its query and hides upstream failures
   fail = true;
   assert.equal((await f.request('/mosaic/api/private/dca?symbol=fund:110020&start=2026-01-05&every=week', { cookie })).status, 503);
 });
+
+test('private page addresses serve the app shell and pages never reach visitors', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  for (const route of ['/mosaic/private/money', '/mosaic/private/edit/']) assert.match((await f.request(route)).text, /<div id="app">/);
+  for (const route of ['/mosaic/private/Money', '/mosaic/private/a/b', '/mosaic/public/money']) assert.equal((await f.request(route)).status, 404);
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const ids = state.draft.modules.map(item => item.id);
+  const page = { title: state.draft.title, modules: state.draft.modules.map(({ id, type, data }) => ({ id, type, data })), pages: [{ id: 'main', title: '总览' }, { id: 'money', title: '理财' }],
+    spaces: { public: { items: [] }, private: { items: ids.map((id, index) => ({ id, ...(index ? {} : { page: 'money' }) })) } } };
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page } })).value;
+  assert.equal((await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } })).status, 200);
+  const owner = (await f.request('/mosaic/api/private/page', { cookie })).value.page;
+  assert.deepEqual([owner.pages.map(item => item.id), owner.spaces.private.items[0].page], [['main', 'money'], 'money']);
+  assert.ok(!(await f.request('/mosaic/api/page')).text.includes('理财'));
+  await f.restart();
+  assert.equal((await f.request('/mosaic/api/private/page', { cookie })).value.page.pages.length, 2);
+});

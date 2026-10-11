@@ -98,6 +98,14 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,
 .site-footer { font-size: 12px; padding: 28px 0 32px; margin-top: 12px; text-shadow: var(--on-wallpaper); }
 .private-heading { margin-bottom: 16px; font-size: 12px; color: var(--muted); }
 .private-heading>div { display: flex; gap: 22px; }
+.page-tabs { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.page-tabs[hidden],.page-preview[hidden] { display: none; }
+.page-tabs a { padding: 7px 14px; border-radius: 999px; color: var(--muted); font-size: 13px; transition: background-color .15s, color .15s; }
+.page-tabs a:hover { color: var(--ink); }
+.page-tabs a[aria-current] { background: var(--raised); color: var(--ink); }
+.page-preview { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin: -8px 0 20px; }
+#page-list h3 { margin: 22px 0 10px; font-size: 13px; }
+.page-editor [aria-invalid="true"] { border-color: var(--negative); }
 .private-scope { color: var(--violet); }
 .shell-menu { display: none; }
 .navigation-backdrop { display: none; }

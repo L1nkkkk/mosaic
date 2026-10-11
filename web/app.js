@@ -3,7 +3,7 @@ import { createModuleHost } from './runtime.js';
 import { escape, field } from './ui.js';
 import { normalizeLayout, normalizeLayoutOverride, observeModuleLayout, sizeModuleFrame } from './layout.js';
 import { guardPageScroll } from './scroll.js';
-import { spacesOf, placedModules } from './spaces.js';
+import { spacesOf, placedModules, pagesOf, pageOfEntry } from './spaces.js';
 let attachLayoutEditor, reorderModules;
 
 const app = document.querySelector('#app');
@@ -17,6 +17,9 @@ let busy = false;
 let noticeTimer;
 let resourceTimer;
 let previewAudience = 'private';
+// The private page on screen, in the workspace and in the editor's Private preview.
+let pageView;
+let clipboard;
 let searchQuery = '';
 let readerPage;
 let stopLayout = () => {};
@@ -25,8 +28,13 @@ const resources = new Map();
 const mounted = new Map();
 let privateState;
 let saveQueue = Promise.resolve();
-function adopt(next) { state = next; state.draft.spaces = spacesOf(state.draft); return state; }
-function outgoing() { return { title: state.draft.title, modules: state.draft.modules.map(({ id, type, data, live }) => ({ id, type, data, ...(live ? { live: true } : {}) })), spaces: state.draft.spaces }; }
+function adopt(next) {
+  state = next; state.draft.pages = pagesOf(state.draft); state.draft.spaces = spacesOf(state.draft);
+  for (const entry of state.draft.spaces.private.items) entry.page = pageOfEntry(state.draft.pages, entry);
+  if (!state.draft.pages.some(item => item.id === pageView)) pageView = state.draft.pages[0].id;
+  return state;
+}
+function outgoing() { return { title: state.draft.title, modules: state.draft.modules.map(({ id, type, data, live }) => ({ id, type, data, ...(live ? { live: true } : {}) })), spaces: state.draft.spaces, pages: state.draft.pages }; }
 const placementOf = (id, space = previewAudience) => state.draft.spaces[space].items.find(entry => entry.id === id);
 const spaceName = space => space === 'public' ? '公开空间' : '私人空间';
 function disposeModules() { for (const entry of mounted.values()) entry.host.dispose(); mounted.clear(); stopLayout(); }
@@ -54,9 +62,12 @@ async function saveModule(id, data, baseData) {
   saveQueue = operation.catch(() => {});
   return operation;
 }
-const editing = /\/edit\/?$/.test(location.pathname);
-const laboratory = /\/lab\/?$/.test(location.pathname);
-const privateArea = laboratory || editing || /\/private\/?$/.test(location.pathname);
+// Routes are read relative to the base, so a private page may be named like any other route.
+const route = () => location.pathname.slice(new URL(document.baseURI).pathname.length);
+const editing = /^edit\/?$/.test(route());
+const laboratory = /^lab\/?$/.test(route());
+const privateArea = laboratory || editing || /^private(\/|$)/.test(route());
+const requestedPage = () => route().match(/^private\/([a-z0-9-]+)/)?.[1];
 const logo = '<img src="web/mark.svg" width="28" height="28" alt=""><span>Mosaic<span class="brand-cn">拼页</span></span>';
 
 function notice(message, error = false) {
@@ -100,13 +111,13 @@ async function ensureModules(page) {
   }));
 }
 
-async function refreshResources(page) {
+async function refreshResources(page, items = page.modules) {
   const requests = new Map();
   const request = route => {
     if (!requests.has(route)) requests.set(route, api(route));
     return requests.get(route);
   };
-  await Promise.all(page.modules.map(async item => {
+  await Promise.all(items.map(async item => {
     const module = definitions.get(item.type);
     if (!module?.load) return;
     try { resources.set(item.id, { value: await module.load({ request, id: item.id, data: structuredClone(item.data) }) }); }
@@ -128,10 +139,11 @@ function renderPage(page, destination, audience = 'public') {
   if (!destination) return;
   stopLayout();
   const space = audience === 'private' ? 'private' : 'public';
-  destination.classList.toggle('masonry', spacesOf(page)[space].flow === 'masonry');
+  const pages = pagesOf(page), current = space === 'private' ? pages.find(item => item.id === pageView) || pages[0] : undefined;
+  destination.classList.toggle('masonry', (current ? current.flow : spacesOf(page).public.flow) === 'masonry');
   const slots = [];
   const shared = new Set(spacesOf(page).public.items.map(entry => entry.id));
-  const visible = placedModules(page, space).filter(item => space === 'private' || !definitions.get(item.type)?.meta.privateOnly);
+  const visible = placedModules(page, space, current?.id).filter(item => space === 'private' || !definitions.get(item.type)?.meta.privateOnly);
   const ids = new Set(visible.map(item => item.id));
   for (const [id, entry] of mounted) if (!ids.has(id) || entry.slot.parentElement !== destination || visible.find(item => item.id === id)?.type !== entry.type) {
     entry.host.dispose(); entry.slot.remove(); mounted.delete(id);
@@ -172,7 +184,8 @@ function renderPage(page, destination, audience = 'public') {
       let bar = slot.querySelector('.module-editbar');
       if (!bar) {
         bar = document.createElement('div'); bar.className = 'module-editbar';
-        bar.innerHTML = `<button type="button" class="layout-drag" data-layout-action="move" data-label="${escape(module?.meta.name || '模块')}" aria-label="拖动排序 ${escape(module?.meta.name || '模块')}" aria-describedby="layout-help"><span aria-hidden="true">⠿</span><span>${escape(module?.meta.name || '模块')}</span></button><span class="layout-size"></span><button type="button" class="module-edit-button text-button" aria-label="编辑${escape(module?.meta.name || '模块')}">编辑</button>`;
+        bar.innerHTML = `<button type="button" class="layout-drag" data-layout-action="move" data-label="${escape(module?.meta.name || '模块')}" aria-label="拖动排序 ${escape(module?.meta.name || '模块')}" aria-describedby="layout-help"><span aria-hidden="true">⠿</span><span>${escape(module?.meta.name || '模块')}</span></button><span class="layout-size"></span><button type="button" class="module-copy-button text-button" aria-label="复制${escape(module?.meta.name || '模块')}">复制</button><button type="button" class="module-edit-button text-button" aria-label="编辑${escape(module?.meta.name || '模块')}">编辑</button>`;
+        bar.querySelector('.module-copy-button').onclick = () => copyModule(item.id);
         bar.querySelector('.module-edit-button').onclick = () => openModuleEditor(item.id);
         slot.prepend(bar);
         const resize = document.createElement('button'); resize.type = 'button'; resize.className = 'layout-resize'; resize.dataset.layoutAction = 'resize';
@@ -255,9 +268,30 @@ async function showPrivate() {
   const first = await loadModules(true, api('private/page'));
   privateState = first;
   document.title = '私人空间 · Mosaic';
-  app.innerHTML = `<div class="public-shell private-shell">${pageHeader({ privateView: true, title: first.page.title })}<main id="main"><div class="private-heading"><span>全部模块 <span class="private-scope">· 仅自己可见</span></span><div><button class="text-button" id="refresh-private">刷新状态 ↻</button><button class="text-button" id="private-logout">退出登录</button></div></div><div class="page-grid" id="private-page"></div></main>${footer()}</div>`;
+  app.innerHTML = `<div class="public-shell private-shell">${pageHeader({ privateView: true, title: first.page.title })}<main id="main"><div class="private-heading"><nav id="page-tabs" class="page-tabs" aria-label="私人空间页面" hidden></nav><span id="private-scope">全部模块 <span class="private-scope">· 仅自己可见</span></span><div><button class="text-button" id="refresh-private">刷新状态 ↻</button><button class="text-button" id="private-logout">退出登录</button></div></div><div class="page-grid" id="private-page"></div></main>${footer()}</div>`;
   mountShell(app, 'private'); readerPage = first.page; bindSearch('private');
   document.querySelector('#private-logout').onclick = logout;
+  pageView = requestedPage();
+  const tabs = document.querySelector('#page-tabs');
+  const showTabs = () => {
+    const pages = pagesOf(privateState.page);
+    // An address that names no page falls back to the first one.
+    if (!pages.some(item => item.id === pageView)) { if (pageView) history.replaceState(null, '', new URL('private', document.baseURI)); pageView = pages[0].id; }
+    tabs.hidden = pages.length < 2; document.querySelector('#private-scope').hidden = pages.length > 1;
+    tabs.innerHTML = pages.map((item, index) => `<a href="${index ? `private/${item.id}` : 'private'}" data-page="${item.id}" ${item.id === pageView ? 'aria-current="page"' : ''}>${escape(item.title)}</a>`).join('');
+    document.title = `${pages.length > 1 ? `${pages.find(item => item.id === pageView).title} · ` : ''}私人空间 · Mosaic`;
+  };
+  const onPage = () => placedModules(privateState.page, 'private', pageView);
+  tabs.onclick = event => {
+    const link = event.target.closest('a[data-page]');
+    if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.button) return;
+    event.preventDefault();
+    if (link.dataset.page === pageView) return;
+    pageView = link.dataset.page; history.pushState(null, '', link.href);
+    showTabs(); renderPage(privateState.page, document.querySelector('#private-page'), 'private'); scrollTo(0, 0);
+    refreshResources(privateState.page, onPage()).then(() => renderPage(privateState.page, document.querySelector('#private-page'), 'private')).catch(error => { if (error.status === 401) showLogin(); });
+  };
+  window.onpopstate = () => { if (!tabs.isConnected) { window.onpopstate = null; return; } pageView = requestedPage(); refresh().catch(() => {}); };
   let refreshing = false;
   const refresh = async initial => {
     if (refreshing) return;
@@ -267,8 +301,9 @@ async function showPrivate() {
       if (!privateState || incoming.revision >= privateState.revision) privateState = incoming;
       readerPage = privateState.page;
       await ensureModules(privateState.page);
+      showTabs();
       renderPage(privateState.page, document.querySelector('#private-page'), 'private');
-      await refreshResources(privateState.page);
+      await refreshResources(privateState.page, onPage());
       renderPage(privateState.page, document.querySelector('#private-page'), 'private');
     } finally { refreshing = false; }
   };
@@ -305,9 +340,95 @@ function finishArrange(change) {
   if (message) document.querySelector('#layout-status').textContent = message;
 }
 
+// Brings the space and, in Private, the page a module lives on into the preview.
+function reveal(id) {
+  if (!placementOf(id)) document.querySelector(`#${previewAudience === 'public' ? 'private' : 'public'}-preview`).click();
+  const entry = placementOf(id, 'private');
+  if (previewAudience === 'private' && entry && entry.page !== pageView) { pageView = entry.page; renderPageTabs(); updatePreview(); }
+}
+
+function renderPageTabs() {
+  const bar = document.querySelector('#page-preview');
+  bar.hidden = previewAudience !== 'private'; bar.replaceChildren();
+  const tabs = document.createElement('div'); tabs.className = 'segmented';
+  for (const item of state.draft.pages) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = item.title; button.dataset.page = item.id;
+    button.classList.toggle('active', item.id === pageView); button.setAttribute('aria-pressed', String(item.id === pageView));
+    button.onclick = () => { pageView = item.id; renderPageTabs(); updatePreview(); renderFields(); };
+    tabs.append(button);
+  }
+  const add = document.createElement('button'); add.type = 'button'; add.className = 'text-button'; add.id = 'add-page'; add.textContent = '＋ 新页面'; add.disabled = state.draft.pages.length >= 12;
+  add.onclick = () => {
+    let number = state.draft.pages.length + 1; while (state.draft.pages.some(item => item.id === `page-${number}`)) number++;
+    state.draft.pages.push({ id: `page-${number}`, title: `页面 ${number}` }); pageView = `page-${number}`;
+    setDirty(); renderPageTabs(); updatePreview(); renderPageSettings(); document.querySelector('#open-page-settings').click();
+  };
+  if (state.draft.pages.length > 1) bar.append(tabs);
+  bar.append(add);
+}
+
+function renderPageSettings() {
+  const list = document.querySelector('#page-list'); list.replaceChildren();
+  const heading = document.createElement('h3'); heading.textContent = '私人空间页面'; list.append(heading);
+  state.draft.pages.forEach((item, index) => {
+    const row = document.createElement('div'); row.className = 'module-fields link-editor page-editor';
+    row.append(field(index ? '页面名称' : '页面名称 · 首页', item.title, value => { item.title = value; setDirty(); renderPageTabs(); }, { maxLength: 24 }));
+    if (index) {
+      const address = field('地址 private/…', item.id, value => {
+        const valid = /^[a-z0-9][a-z0-9-]{0,23}$/.test(value) && !state.draft.pages.some(page => page !== item && page.id === value);
+        address.querySelector('input').setAttribute('aria-invalid', String(!valid));
+        if (!valid) return;
+        for (const entry of state.draft.spaces.private.items) if (entry.page === item.id) entry.page = value;
+        if (pageView === item.id) pageView = value;
+        item.id = value; setDirty(); renderPageTabs();
+      }, { maxLength: 24, placeholder: '小写字母、数字和连字符' });
+      row.append(address);
+    }
+    if (state.draft.pages.length > 1) {
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button danger'; remove.textContent = '删除页面，模块移到首页';
+      remove.onclick = () => {
+        state.draft.pages = state.draft.pages.filter(page => page !== item);
+        for (const entry of state.draft.spaces.private.items) if (entry.page === item.id) entry.page = state.draft.pages[0].id;
+        if (pageView === item.id) pageView = state.draft.pages[0].id;
+        setDirty(); renderPageTabs(); renderPageSettings(); renderModuleList(); renderFields(); updatePreview();
+      };
+      row.append(remove);
+    }
+    list.append(row);
+  });
+  const help = document.createElement('p'); help.className = 'scope-help'; help.textContent = '每个私人模块只在一个页面上；在模块设置里换页面，或复制后粘贴到另一页。公开空间不分页。'; list.append(help);
+}
+
+const moduleTitle = item => item.data.title || item.data.label || catalog.find(meta => meta.id === item.type)?.name || item.type;
+function syncPaste() {
+  const button = document.querySelector('#paste-module');
+  button.disabled = !clipboard; button.textContent = clipboard ? `粘贴「${clipboard.title.slice(0, 12)}」` : '粘贴';
+}
+function copyModule(id) {
+  const item = state.draft.modules.find(item => item.id === id);
+  if (!item) return;
+  // The copy keeps the size and look it has where it was copied, not its page.
+  const { id: _, page: __, ...placement } = structuredClone(placementOf(id) || placementOf(id, 'private') || placementOf(id, 'public') || {});
+  clipboard = { type: item.type, title: moduleTitle(item), data: structuredClone(item.data), placement };
+  syncPaste(); notice(`已复制「${clipboard.title}」，切到要放的页面后点「粘贴」。`);
+}
+function pasteModule() {
+  if (!clipboard) return;
+  const meta = definitions.get(clipboard.type)?.meta;
+  if (state.draft.modules.length >= 30) return notice('页面最多可放置 30 个模块。', true);
+  if (previewAudience === 'public' && meta?.privateOnly) return notice(`${meta.name}只能放在私人空间。`, true);
+  const item = { id: crypto.randomUUID(), type: clipboard.type, data: structuredClone(clipboard.data) };
+  state.draft.modules.push(item);
+  state.draft.spaces[previewAudience].items.push({ ...structuredClone(clipboard.placement), id: item.id, ...(previewAudience === 'private' ? { page: pageView } : {}) });
+  selected = item.id; setDirty(); renderModuleList(); renderFields(); updatePreview();
+  [...document.querySelectorAll('#preview-page>.module-slot')].find(slot => slot.dataset.moduleId === item.id)?.scrollIntoView({ block: 'center' });
+  notice(`已粘贴到${previewAudience === 'private' && state.draft.pages.length > 1 ? `「${state.draft.pages.find(page => page.id === pageView).title}」` : spaceName(previewAudience)}，保存后生效。`);
+  refreshResources(state.draft).then(updatePreview).catch(() => {});
+}
+
 function openModuleEditor(id) {
   document.querySelector('#module-save-message').textContent = '';
-  if (!placementOf(id)) document.querySelector(`#${previewAudience === 'public' ? 'private' : 'public'}-preview`).click();
+  reveal(id);
   selectModule(id);
   const dialog = document.querySelector('#module-editor');
   if (!dialog.open) dialog.showModal();
@@ -323,10 +444,10 @@ function renderModuleList() {
     const title = item.data.title || item.data.label || meta?.name || item.type;
     if (query && !`${meta?.name} ${title}`.toLocaleLowerCase().includes(query)) return;
     const button = document.createElement('button'); button.type = 'button'; button.className = 'module-jump';
-    button.innerHTML = `<span class="module-number">${String(index + 1).padStart(2, '0')}</span><span><strong>${escape(title)}</strong><small>${escape(meta?.name || item.type)} · ${placementOf(item.id, 'public') ? placementOf(item.id, 'private') ? '两个空间共用' : '仅公开空间' : '仅私人空间'}</small></span><span aria-hidden="true">↗</span>`;
+    button.innerHTML = `<span class="module-number">${String(index + 1).padStart(2, '0')}</span><span><strong>${escape(title)}</strong><small>${escape(meta?.name || item.type)} · ${placementOf(item.id, 'public') ? placementOf(item.id, 'private') ? '两个空间共用' : '仅公开空间' : '仅私人空间'}${state.draft.pages.length > 1 && placementOf(item.id, 'private') ? ` · ${escape(state.draft.pages.find(page => page.id === placementOf(item.id, 'private').page)?.title)}` : ''}</small></span><span aria-hidden="true">↗</span>`;
     button.onclick = () => {
       document.querySelector('#module-finder').close();
-      if (!placementOf(item.id)) document.querySelector(`#${previewAudience === 'public' ? 'private' : 'public'}-preview`).click();
+      reveal(item.id);
       const slot = [...document.querySelectorAll('#preview-page>.module-slot')].find(slot => slot.dataset.moduleId === item.id);
       slot?.scrollIntoView({ block: 'center' });
       openModuleEditor(item.id);
@@ -359,7 +480,7 @@ function renderFields() {
     // A module joining a space starts with the size it has in the other one.
     for (const [space, wanted] of [['public', audienceSelect.value !== 'private'], ['private', audienceSelect.value !== 'public-only']]) {
       const items = state.draft.spaces[space].items, present = items.some(entry => entry.id === item.id);
-      if (wanted && !present) items.push({ ...structuredClone(placed), id: item.id });
+      if (wanted && !present) { const { page: _, ...copy } = structuredClone(placed); items.push({ ...copy, id: item.id, ...(space === 'private' ? { page: pageView } : {}) }); }
       if (!wanted && present) state.draft.spaces[space].items = items.filter(entry => entry.id !== item.id);
     }
     if (!placementOf(item.id)) document.querySelector(`#${previewAudience === 'public' ? 'private' : 'public'}-preview`).click();
@@ -374,6 +495,15 @@ function renderFields() {
     liveInput.onchange = () => { if (liveInput.checked) item.live = true; else delete item.live; setDirty(); updatePreview(); };
     const liveHelp = document.createElement('p'); liveHelp.className = 'scope-help'; liveHelp.textContent = '开启后，这个模块的内容一保存访客就能看到，不用再点发布。位置和尺寸仍然随发布生效。';
     settings.append(liveField, liveHelp);
+  }
+  if (mine && state.draft.pages.length > 1) {
+    const entry = placementOf(item.id, 'private'), pageField = document.createElement('label'); pageField.className = 'field';
+    pageField.innerHTML = '<span>所在页面</span><select aria-label="所在页面"></select>';
+    const pageSelect = pageField.querySelector('select');
+    for (const page of state.draft.pages) pageSelect.add(new Option(page.title, page.id));
+    pageSelect.value = entry.page;
+    pageSelect.onchange = () => { entry.page = pageSelect.value; setDirty(); renderModuleList(); updatePreview(); notice(`已移到「${state.draft.pages.find(page => page.id === entry.page).title}」，保存后生效。`); };
+    settings.append(pageField);
   }
   const widthField = document.createElement('label'); widthField.className = 'field';
   widthField.innerHTML = '<span>模块宽度</span><select aria-label="模块宽度"><option value="">跟随模块推荐</option><option value="3">四分之一行</option><option value="4">三分之一行</option><option value="6">半行</option><option value="8">三分之二行</option><option value="12">整行</option></select>';
@@ -412,6 +542,9 @@ function renderFields() {
     } catch { contentFields.append(document.createTextNode('这个模块暂时无法编辑，原内容已保留。')); }
   }
   const controls = document.createElement('div'); controls.className = 'module-actions';
+  const copy = document.createElement('button'); copy.type = 'button'; copy.className = 'text-button'; copy.textContent = '复制模块';
+  copy.onclick = () => copyModule(item.id);
+  controls.append(copy);
   const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'text-button danger'; remove.textContent = '移除模块';
   remove.onclick = () => {
     state.draft.modules = state.draft.modules.filter(entry => entry.id !== item.id);
@@ -432,7 +565,7 @@ function showPalette() {
     button.disabled = !definitions.get(meta.id) || state.draft.modules.length >= 30;
     button.onclick = () => {
       const item = { id: crypto.randomUUID(), type: meta.id, data: structuredClone(meta.defaultData) };
-      state.draft.modules.push(item); state.draft.spaces.private.items.push({ id: item.id }); selected = item.id; setDirty(); renderModuleList(); renderFields(); updatePreview(); dialog.close();
+      state.draft.modules.push(item); state.draft.spaces.private.items.push({ id: item.id, page: pageView }); selected = item.id; setDirty(); renderModuleList(); renderFields(); updatePreview(); dialog.close();
       document.querySelector('#private-preview').click();
       const slot = [...document.querySelectorAll('#preview-page>.module-slot')].find(slot => slot.dataset.moduleId === item.id);
       slot?.scrollIntoView({ block: 'center' });
@@ -448,7 +581,7 @@ async function saveDraft() {
   adopt(await api('admin/draft', { method: 'PUT', body: JSON.stringify({ revision: state.revision, page: outgoing() }) }));
   dirty = false;
   document.querySelector('#save-status').textContent = '草稿已保存';
-  renderModuleList(); renderFields(); updatePreview();
+  renderPageTabs(); renderModuleList(); renderFields(); updatePreview();
 }
 
 async function save(publish = false) {
@@ -484,17 +617,19 @@ async function loadEditor() {
   previewAudience = 'private';
   await refreshResources(state.draft);
   document.title = '编辑台 · Mosaic';
-  app.innerHTML = `<div class="editor-shell"><header class="editor-header"><a class="text-button" href="private">← 我的页面</a><span class="workspace-badge">编辑台</span><span id="save-status" role="status">所有草稿已保存</span><div class="editor-toolbar"><button class="text-button" id="open-page-settings">页面设置</button><a class="text-button" href="./" target="_blank" rel="noopener">公开页 ↗</a><button class="button outline" id="save-draft">保存草稿</button><button class="button primary" id="publish">发布</button></div></header><main id="main" class="editor-layout"><h1 class="sr-only">编辑页面</h1><section class="workspace-preview" aria-label="页面实时预览"><div class="preview-toolbar"><div class="canvas-actions"><button class="button primary small" id="add-module">＋ 添加模块</button><button class="button outline small" id="open-module-finder">查找模块 <span id="module-count"></span></button></div><div class="segmented"><button type="button" id="wide-preview" class="active" aria-pressed="true">宽屏</button><button type="button" id="narrow-preview" aria-pressed="false">窄屏</button></div></div><div class="audience-preview"><span>两个空间各自排布；点击模块空白处或「编辑」修改内容</span><div class="segmented"><button type="button" id="private-preview" class="active" aria-pressed="true">私人空间</button><button type="button" id="public-preview" aria-pressed="false">公开空间</button></div></div><div class="preview" id="preview"><div class="page-grid" id="preview-page"></div></div></section></main>
+  app.innerHTML = `<div class="editor-shell"><header class="editor-header"><a class="text-button" href="private">← 我的页面</a><span class="workspace-badge">编辑台</span><span id="save-status" role="status">所有草稿已保存</span><div class="editor-toolbar"><button class="text-button" id="open-page-settings">页面设置</button><a class="text-button" href="./" target="_blank" rel="noopener">公开页 ↗</a><button class="button outline" id="save-draft">保存草稿</button><button class="button primary" id="publish">发布</button></div></header><main id="main" class="editor-layout"><h1 class="sr-only">编辑页面</h1><section class="workspace-preview" aria-label="页面实时预览"><div class="preview-toolbar"><div class="canvas-actions"><button class="button primary small" id="add-module">＋ 添加模块</button><button class="button outline small" id="open-module-finder">查找模块 <span id="module-count"></span></button><button class="button outline small" id="paste-module" disabled>粘贴</button></div><div class="segmented"><button type="button" id="wide-preview" class="active" aria-pressed="true">宽屏</button><button type="button" id="narrow-preview" aria-pressed="false">窄屏</button></div></div><div class="audience-preview"><span>两个空间各自排布；点击模块空白处或「编辑」修改内容</span><div class="segmented"><button type="button" id="private-preview" class="active" aria-pressed="true">私人空间</button><button type="button" id="public-preview" aria-pressed="false">公开空间</button></div></div><div class="page-preview" id="page-preview"></div><div class="preview" id="preview"><div class="page-grid" id="preview-page"></div></div></section></main>
   <dialog id="module-editor" class="canvas-dialog" aria-labelledby="module-editor-title"><div class="dialog-heading"><h2 id="module-editor-title">编辑模块</h2><button class="icon-button" type="button" data-close="module-editor" aria-label="关闭模块编辑">×</button></div><div id="module-fields"></div><p id="module-save-message" role="status" class="inline-error"></p><footer class="dialog-actions"><span>完成后可继续排布，发布后访客才看到更新。</span><button class="button outline small" type="button" data-close="module-editor">完成编辑</button><button class="button primary small" id="save-module" type="button">保存草稿</button></footer></dialog>
   <dialog id="module-finder" class="canvas-dialog" aria-labelledby="module-finder-title"><div class="dialog-heading"><h2 id="module-finder-title">查找模块</h2><button class="icon-button" type="button" data-close="module-finder" aria-label="关闭查找">×</button></div><label class="field"><span>按名称或标题查找，包括隐藏模块</span><input id="find-module" type="search" placeholder="搜索模块…" autocomplete="off"></label><div id="module-list"></div><p id="find-empty" class="muted" hidden>没有匹配的模块。</p></dialog>
-  <dialog id="page-settings" class="canvas-dialog" aria-labelledby="page-settings-title"><div class="dialog-heading"><h2 id="page-settings-title">页面设置</h2><button class="icon-button" type="button" data-close="page-settings" aria-label="关闭页面设置">×</button></div><div id="space-settings"></div><div class="dialog-actions"><a class="text-button" href="lab" target="_blank" rel="noopener">模块实验台 ↗</a><button class="text-button" id="logout">退出登录</button><button class="button primary small" data-close="page-settings">完成</button></div></dialog>
+  <dialog id="page-settings" class="canvas-dialog" aria-labelledby="page-settings-title"><div class="dialog-heading"><h2 id="page-settings-title">页面设置</h2><button class="icon-button" type="button" data-close="page-settings" aria-label="关闭页面设置">×</button></div><div id="space-settings"></div><div id="page-list"></div><div class="dialog-actions"><a class="text-button" href="lab" target="_blank" rel="noopener">模块实验台 ↗</a><button class="text-button" id="logout">退出登录</button><button class="button primary small" data-close="page-settings">完成</button></div></dialog>
   <dialog id="module-picker" aria-labelledby="module-picker-title"><div class="dialog-heading"><h2 id="module-picker-title">添加模块</h2><button type="button" class="icon-button" id="close-picker" aria-label="关闭">×</button></div><div class="module-options"></div></dialog></div>`;
   mountShell(app, 'edit');
   document.querySelector('#space-settings').append(field('空间名称', state.draft.title, value => { state.draft.title = value; setDirty(); }, { maxLength: 80 }));
   const flow = document.createElement('label'); flow.className = 'field';
   flow.innerHTML = '<span>页面排列</span><select aria-label="页面排列"><option value="grid">对齐网格</option><option value="masonry">瀑布流</option></select>';
-  const syncFlow = () => { flow.querySelector('span').textContent = `页面排列 · ${spaceName(previewAudience)}`; flow.querySelector('select').value = state.draft.spaces[previewAudience].flow || 'grid'; };
-  flow.querySelector('select').onchange = event => { state.draft.spaces[previewAudience].flow = event.target.value; setDirty(); updatePreview(); };
+  // Private is arranged page by page; Public as one space.
+  const arranged = () => previewAudience === 'private' ? state.draft.pages.find(item => item.id === pageView) : state.draft.spaces.public;
+  const syncFlow = () => { flow.querySelector('span').textContent = `页面排列 · ${previewAudience === 'private' && state.draft.pages.length > 1 ? arranged().title : spaceName(previewAudience)}`; flow.querySelector('select').value = arranged().flow || 'grid'; };
+  flow.querySelector('select').onchange = event => { arranged().flow = event.target.value; setDirty(); updatePreview(); };
   document.querySelector('#space-settings').append(flow);
   const help = document.createElement('p'); help.id = 'layout-help'; help.className = 'sr-only'; help.textContent = '拖动 ⠿ 排序，拉动右下角调整大小。键盘：聚焦手柄后用方向键调整，拖动时按 Esc 取消。';
   document.querySelector('.audience-preview').after(help);
@@ -516,7 +651,8 @@ async function loadEditor() {
     const slot = [...document.querySelectorAll('#preview-page>.module-slot')].find(slot => slot.dataset.moduleId === selected);
     (slot?.querySelector('.module-edit-button') || document.querySelector('#add-module')).focus({ preventScroll: true });
   });
-  document.querySelector('#open-page-settings').onclick = () => { syncFlow(); document.querySelector('#page-settings').showModal(); };
+  document.querySelector('#open-page-settings').onclick = () => { syncFlow(); renderPageSettings(); const dialog = document.querySelector('#page-settings'); if (!dialog.open) dialog.showModal(); };
+  document.querySelector('#paste-module').onclick = pasteModule; syncPaste();
   document.querySelector('#open-module-finder').onclick = () => { renderModuleList(); document.querySelector('#module-finder').showModal(); document.querySelector('#find-module').focus(); };
   document.querySelector('#find-module').oninput = renderModuleList;
   document.querySelector('#save-module').onclick = async () => { if (await save()) document.querySelector('#module-editor').close(); };
@@ -528,13 +664,13 @@ async function loadEditor() {
   for (const audience of ['private', 'public']) document.querySelector(`#${audience}-preview`).onclick = () => {
     previewAudience = audience;
     for (const value of ['private', 'public']) { const button = document.querySelector(`#${value}-preview`); button.classList.toggle('active', audience === value); button.setAttribute('aria-pressed', String(audience === value)); }
-    updatePreview(); renderFields();
+    renderPageTabs(); updatePreview(); renderFields();
   };
   for (const narrow of [false, true]) document.querySelector(narrow ? '#narrow-preview' : '#wide-preview').onclick = () => {
     document.querySelector('#preview').classList.toggle('narrow', narrow);
     for (const [id, active] of [['#wide-preview', !narrow], ['#narrow-preview', narrow]]) { const button = document.querySelector(id); button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active)); }
   };
-  renderModuleList(); renderFields(); updatePreview();
+  renderPageTabs(); renderModuleList(); renderFields(); updatePreview();
   startRefresh(async () => { await refreshResources(state.draft); updatePreview(); });
 }
 
