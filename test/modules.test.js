@@ -46,3 +46,20 @@ test('a module can reduce what Public receives without changing the saved conten
   assert.deepEqual(publicPage(page, registry).modules[0].data, { stage: 'alpha' });
   assert.equal(page.modules[0].data.notes, 'INTERNAL');
 });
+
+test('project progress keeps notes and private milestones away from visitors', async () => {
+  const { validate, publicData, meta } = await import('../modules/projects/definition.js');
+  const project = { ...meta.defaultData.projects[0], note: 'INTERNAL', milestones: [{ text: 'open', done: true }, { text: 'SECRET', done: false, private: true }, { text: 'next', done: false, private: false }] };
+  const data = validate({ title: ' Work ', projects: [project] });
+  assert.equal(data.title, 'Work');
+  assert.deepEqual(data.projects[0].milestones, [{ text: 'open', done: true }, { text: 'SECRET', done: false, private: true }, { text: 'next', done: false }]);
+  const shown = publicData(data);
+  assert.ok(!JSON.stringify(shown).includes('INTERNAL') && !JSON.stringify(shown).includes('SECRET'));
+  assert.deepEqual(shown.projects[0].progress, { done: 1, total: 3 });
+  assert.deepEqual(shown.projects[0].milestones, [{ text: 'open', done: true }, { text: 'next', done: false }]);
+  for (const mutate of [p => { p.stage = 'launched'; }, p => { p.accent = 'url(evil)'; }, p => { p.url = 'javascript:alert(1)'; }, p => { p.name = ' '; }, p => { p.milestones = Array(25).fill({ text: 'm', done: false }); }, p => { p.milestones = [{ text: 'm', done: 'yes' }]; }]) {
+    const bad = structuredClone(project); mutate(bad);
+    assert.throws(() => validate({ title: '', projects: [bad] }));
+  }
+  assert.throws(() => validate({ title: '', projects: [project, project] }));
+});
