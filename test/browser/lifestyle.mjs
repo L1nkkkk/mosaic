@@ -36,6 +36,8 @@ await withBrowser(async ({ app, base, command, evaluate, waitFor }) => {
   await waitFor(`document.querySelector('.weather-current strong')?.textContent === '21°' && document.querySelector('.music-module audio')`);
   assert.equal(await evaluate('Boolean(document.querySelector(".module-error"))'),false);
   await waitFor(`document.querySelector('.photo-module img')?.naturalWidth > 0`);
+  // Content saved before ornaments existed gets them; they sit after the books and show as room allows.
+  assert.deepEqual(await evaluate(`(()=>{const decor=document.querySelector('.books-shelf').lastElementChild;return [decor.className,decor.hidden,getComputedStyle(decor.querySelector('.decor-plant')).display,decor.offsetWidth>=76]})()`),['books-decor',false,'block',true]);
   // The bookcase: the book being read faces out with its cover, and a click pulls a book out and describes it.
   assert.deepEqual(await evaluate(`[...document.querySelectorAll('.books-shelf .book')].map(book=>[book.dataset.status,book.offsetWidth>60,!book.querySelector('img').hidden])`),[['reading',true,true],['want',false,false]]);
   await evaluate(`document.querySelectorAll('.books-shelf .book')[1].click()`);
