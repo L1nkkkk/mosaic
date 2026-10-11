@@ -65,6 +65,8 @@
 
 `layout` 可省略；只允许 `span`（1～12 整数）和 `height`（120～1600 整数 CSS 像素）。`audience` 为 `public` 或 `private`。Private 的 `visible` 被规范化为 `false`，但这不会隐藏私人页中的实例。
 
+两个空间排布不同时，`Page` 带有 `spaces`：`{ public: { flow?, items }, private: { flow?, items } }`，`items` 为 `{ id, layout?, appearance? }` 的有序列表。提交带 `spaces` 的页面时以它为准：模块的 `audience`、`visible`、`layout`、`appearance` 和顶层 `flow` 由服务端按公开空间推导；每个模块至少放在一个空间，仅私人模块不能放进 `public`。两边排布相同时服务端省略 `spaces`。模块可带 `live: true`：其内容在保存草稿或 `PUT /api/private/module` 时同步到已发布版本，前提是它已经发布在公开空间。`GET /api/page` 始终返回不含 `spaces` 的公开排布，数据经过模块的 `publicData`。
+
 `State` 的结构如下，时间使用 ISO 8601 字符串：
 
 ```text

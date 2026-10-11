@@ -4,6 +4,14 @@ import { randomUUID } from 'node:crypto';
 
 export class ConflictError extends Error {}
 
+// Makes a rename durable. Windows cannot flush a directory handle, so local
+// development there relies on the rename alone.
+export async function syncDirectory(directory) {
+  if (process.platform === 'win32') return;
+  const handle = await open(directory, 'r');
+  try { await handle.sync(); } finally { await handle.close(); }
+}
+
 export class PageStore {
   constructor(directory, initialPage) {
     this.directory = directory;
@@ -39,8 +47,7 @@ export class PageStore {
       await handle.close();
       handle = null;
       await rename(temporary, this.filename);
-      const directory = await open(this.directory, 'r');
-      try { await directory.sync(); } finally { await directory.close(); }
+      await syncDirectory(this.directory);
     } finally {
       await handle?.close();
       await unlink(temporary).catch(error => { if (error.code !== 'ENOENT') throw error; });

@@ -540,3 +540,78 @@ test('QR login endpoints require authentication and same-origin; only safe statu
   await f.request(route + 'cancel', { method: 'POST', cookie, body: { id: flow.value.id } });
   assert.equal((await f.request(route + 'status', { method: 'POST', cookie, body: { id: flow.value.id } })).status, 400);
 });
+
+const spaced = page => ({ title: page.title, modules: page.modules.map(({ id, type, data, live }) => ({ id, type, data, ...(live ? { live } : {}) })), spaces: { public: { items: page.modules.filter(item => item.audience === 'public' && item.visible).map(item => ({ id: item.id })) }, private: { items: page.modules.map(item => ({ id: item.id })) } } });
+
+test('each space keeps its own modules, order and sizes; identical arrangements keep the original shape', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  const save = page => f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page } });
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const unchanged = await save(spaced(state.draft));
+  assert.equal(unchanged.status, 200); assert.equal(unchanged.value.draft.spaces, undefined);
+  assert.deepEqual(unchanged.value.draft, state.draft);
+  state = unchanged.value;
+  const page = spaced(state.draft), id = type => state.draft.modules.find(item => item.type === type).id;
+  page.spaces.public = { flow: 'masonry', items: [{ id: id('links'), layout: { span: 8 } }, { id: id('intro'), appearance: 'bare' }] };
+  page.spaces.private.items = page.spaces.private.items.filter(entry => entry.id !== id('intro')).reverse();
+  page.spaces.private.items.find(entry => entry.id === id('links')).layout = { span: 3, height: 200 };
+  state = (await save(page)).value;
+  assert.deepEqual(state.draft.spaces.public, page.spaces.public);
+  // Readers that only know the module flags still see a restrictive, complete page.
+  assert.equal(state.draft.modules.find(item => item.type === 'note').audience, 'private');
+  assert.deepEqual(state.draft.modules.find(item => item.type === 'links').layout, { span: 8 });
+  assert.equal(state.draft.modules.at(-1).type, 'intro');
+  // Leaving Public takes effect before publishing; the new arrangement does not.
+  assert.deepEqual((await f.request('/mosaic/api/page')).value.page.modules.map(item => item.type).sort(), ['intro', 'links']);
+  await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
+  await f.restart();
+  const visitor = (await f.request('/mosaic/api/page')).value.page;
+  assert.deepEqual(visitor.modules.map(item => [item.type, item.layout, item.appearance]), [['links', { span: 8 }, undefined], ['intro', undefined, 'bare']]);
+  assert.equal(visitor.flow, 'masonry'); assert.equal(visitor.spaces, undefined);
+  const mine = (await f.request('/mosaic/api/private/page', { cookie })).value.page;
+  assert.equal(mine.spaces.private.items.some(entry => entry.id === id('intro')), false);
+  assert.deepEqual(mine.spaces.private.items.find(entry => entry.id === id('links')).layout, { span: 3, height: 200 });
+});
+
+test('spaces reject private-only modules in Public, unplaced modules and stale editors', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  const state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const status = state.draft.modules.find(item => item.type === 'server-status').id, note = state.draft.modules.find(item => item.type === 'note').id;
+  for (const mutate of [
+    page => { page.spaces.public.items.push({ id: status }); },
+    page => { page.spaces.private.items = page.spaces.private.items.filter(entry => entry.id !== status); },
+    page => { page.spaces.public.items.push({ id: note }); },
+    page => { page.spaces.public.items[0].layout = { span: 99 }; },
+    page => { page.spaces.shared = { items: [] }; },
+    page => { page.modules.find(item => item.id === note).audience = 'private'; },
+  ]) {
+    const page = spaced(state.draft); mutate(page);
+    assert.equal((await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page } })).status, 400);
+  }
+  assert.deepEqual((await f.request('/mosaic/api/admin/state', { cookie })).value, state);
+});
+
+test('live modules publish their own content at once, and only where they are already public', async t => {
+  const f = await fixture(t), cookie = await f.login();
+  let state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
+  const page = spaced(state.draft), todo = page.modules.find(item => item.type === 'todo'), note = page.modules.find(item => item.type === 'note');
+  todo.live = true;
+  page.spaces.public.items = page.spaces.public.items.filter(entry => entry.id !== note.id);
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page } })).value;
+  const visitor = async type => (await f.request('/mosaic/api/page')).value.page.modules.find(item => item.type === type);
+  const put = async (item, data) => { const reply = await f.request('/mosaic/api/private/module', { method: 'PUT', cookie, body: { revision: state.revision, id: item.id, data } }); assert.equal(reply.status, 200); state = (await f.request('/mosaic/api/admin/state', { cookie })).value; };
+  await put(todo, { ...todo.data, items: [{ id: 'now', text: 'LIVE-PROGRESS', done: true }] });
+  assert.equal((await visitor('todo')).data.items[0].text, 'LIVE-PROGRESS');
+  assert.equal((await visitor('todo')).live, undefined);
+  const links = page.modules.find(item => item.type === 'links');
+  await put(links, { ...links.data, title: 'DRAFT-ONLY' });
+  assert.notEqual((await visitor('links')).data.title, 'DRAFT-ONLY');
+  // A live module that is not public stays private, and placing it in Public still needs publishing.
+  const next = spaced(state.draft); next.modules.find(item => item.id === note.id).live = true;
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: next } })).value;
+  await put(note, { ...note.data, body: 'PRIVATE-LIVE-NOTE' });
+  assert.equal(await visitor('note'), undefined);
+  const placed = spaced(state.draft); placed.spaces.public.items.push({ id: note.id });
+  state = (await f.request('/mosaic/api/admin/draft', { method: 'PUT', cookie, body: { revision: state.revision, page: placed } })).value;
+  assert.ok(!(await f.request('/mosaic/api/page')).text.includes('PRIVATE-LIVE-NOTE'));
+});

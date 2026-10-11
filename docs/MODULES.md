@@ -45,6 +45,7 @@ modules/hello-card/
 | --- | --- | --- |
 | `meta` | 是 | 两端读取；普通、可序列化的对象 |
 | `validate(data)` | 是 | 服务端同步执行；返回规范化的 JSON 数据，失败抛出 `Error` |
+| `publicData(data)` | 否 | 服务端同步执行，仅 `definition.js`；返回公开页可以收到的数据，省略时公开全部内容 |
 | `render(data, resource)` | 旧静态契约必需 | 浏览器同步执行；返回 HTML 字符串 |
 | `edit({ data, change })` | 是 | 浏览器选中模块时执行；返回编辑控件 DOM 元素 |
 | `load({ request, id, data })` | 否 | 各页面按实例在浏览器异步执行；返回资源数据或 Promise |
