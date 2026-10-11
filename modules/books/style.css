@@ -20,6 +20,13 @@
 .book[data-status="reading"] img { border-radius:inherit; }
 .book[data-status="reading"] .book-name { inset:14px 10px; writing-mode:horizontal-tb; white-space:normal; overflow-wrap:break-word; text-align:center; font-size:13px; line-height:1.4; }
 .book[data-status="reading"]::before { content:""; position:absolute; z-index:1; top:-5px; right:16px; width:9px; height:38px; background:#b8392e; clip-path:polygon(0 0,100% 0,100% 100%,50% 82%,0 100%); box-shadow:inset -2px 0 #0003; }
+/* Takes whatever the last shelf has left; the ornaments appear as that room allows. */
+.books-decor { container:books-decor / inline-size; flex:1 1 0; min-width:0; height:var(--row); display:flex; align-items:flex-end; justify-content:flex-end; gap:16px; padding-left:12px; pointer-events:none; }
+.books-decor svg { display:none; flex:none; filter:drop-shadow(3px 2px 3px #0008); }
+@container books-decor (min-width:76px) { .books-decor .decor-plant { display:block; } }
+@container books-decor (min-width:200px) { .books-decor .decor-stack { display:block; } }
+@container books-decor (min-width:300px) { .books-decor .decor-frame { display:block; } }
+.books-decor-field input { margin-right:6px; }
 .books-empty { display:grid; place-items:center; min-height:130px; margin:0; font-size:13px; color:#bca88c; }
 .book-detail { display:grid; grid-template-columns:84px minmax(0,1fr); gap:16px; margin-top:16px; padding:14px; border:1px solid #0007; border-radius:6px; background:#1b110a; }
 .book-detail-cover { position:relative; display:grid; place-items:center; aspect-ratio:2/3; overflow:hidden; border-radius:2px 5px 5px 2px; background:linear-gradient(90deg,#0007,#fff2 5%,#0000 12%),var(--book-cloth); box-shadow:4px 5px 10px #0008; }
