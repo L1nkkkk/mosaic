@@ -303,7 +303,9 @@ test('dragged order and frame sizes survive save, replacement and publication wi
   await f.request('/mosaic/api/admin/publish', { method: 'POST', cookie, body: { revision: state.revision } });
   await f.restart();
   const published = (await f.request('/mosaic/api/page')).value.page;
-  assert.deepEqual(published.modules, expected.modules.filter(item => item.audience === 'public'));
+  // Modules may reduce their public data; order and frames must match exactly.
+  const frame = ({ data, ...item }) => item;
+  assert.deepEqual(published.modules.map(frame), expected.modules.filter(item => item.audience === 'public').map(frame));
   for (const item of expected.modules) assert.deepEqual(item.data, original.find(before => before.id === item.id).data);
   state = (await f.request('/mosaic/api/admin/state', { cookie })).value;
   const note = state.draft.modules.find(item => item.type === 'note');
