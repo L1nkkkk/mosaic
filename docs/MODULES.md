@@ -512,6 +512,8 @@ imageElement(img, data.cover, data.title);
 - 工具栏的缩放默认「自适应」：卡片窄于 1200 像素时，iframe 按 1200 像素宽排版再整体缩小（最小 40%），半宽卡片里也能看到桌面版页面；也可固定为 50%–100%。缩放只用 `transform`，不改变外框尺寸，外框大小仍在编辑台拖动调整。
 - `context.view` 为 `edit` 或 `lab` 时不自动加载网站，点击「加载页面」后才打开。
 
+- 其他模块可以把地址交给它：`modules/handoff.js` 的 `browserAvailable()` 询问当前页面有没有挂载的浏览器模块，`openInBrowser(url)` 请它打开一个 HTTPS 地址；浏览器模块用 `receiveAddresses(visit, context.signal)` 接收，页面上有多个时由第一个接手。两边只通过 `window` 上的事件联系，互不导入。书柜的「在浏览器模块里打开」就是这样做的。
+
 核心为它只做了一处改动：内容安全策略增加 `frame-src https:`。检查：`npm test`（`test/browser-module.test.js`、`test/extension.test.js`）与 `node test/browser/browser-module.mjs`。
 
 ## 定投信号模块

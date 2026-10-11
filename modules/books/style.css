@@ -38,6 +38,7 @@
 .book-detail h3 { margin:8px 0 4px; font:600 15px/1.35 Georgia,"Songti SC","Noto Serif SC",serif; color:#f1e6d6; overflow-wrap:anywhere; }
 .book-detail small { font-size:11px; color:#bca88c; }
 .book-detail p { margin:8px 0 0; font-size:12px; line-height:1.75; color:#d8c8ae; white-space:pre-wrap; overflow-wrap:anywhere; }
-.book-detail a { display:inline-block; margin-top:10px; font-size:11px; color:#e8c97a; }
+.book-detail a,.book-open-here { display:inline-block; margin:10px 14px 0 0; padding:0; border:0; background:none; font:inherit; font-size:11px; color:#e8c97a; cursor:pointer; }
+.book-open-here:hover,.book-open-here:focus-visible { text-decoration:underline; }
 @container (max-width:340px) { .books-module { --row:140px; padding:16px 14px 18px; }.books-shelf { padding-inline:10px; }.books-module { --face-w:88px; --face-h:132px; }.book-detail { grid-template-columns:64px minmax(0,1fr); gap:12px; } }
 @media (prefers-reduced-motion:reduce) { .book { transition:none; } }
