@@ -4,6 +4,7 @@ import { neteaseId } from '../modules/music/source.js';
 import { weatherProvider, coordinates } from './weather.js';
 import { dcaProvider } from './dca.js';
 import { Visitors } from './visitors.js';
+import { Blog } from './blog.js';
 import http from 'node:http';
 import { historyReader } from './history.js';
 import { createHash, randomBytes } from 'node:crypto';
@@ -39,6 +40,8 @@ export async function createApp(config) {
   const dca = dcaProvider(config.externalFetch);
   const music = musicProvider(config.externalFetch);
   const visitors = new Visitors(dataDirectory, config.sessionSecret, config.externalFetch);
+  const blog = new Blog(dataDirectory, { repo: config.blogRepo, branch: config.blogBranch || undefined, token: config.blogToken, fetcher: config.blogFetch });
+  await blog.initialize();
   const games = new Games(dataDirectory, config.sessionSecret, config.gameFetch);
   await games.initialize();
   const gameQr = new GameQr(games, config.gameQrFetch);
@@ -137,6 +140,21 @@ export async function createApp(config) {
           response.writeHead(204, { 'Cache-Control': 'no-store' }); return response.end();
         }
       }
+      if (route.startsWith('/api/blog') && ['GET', 'HEAD'].includes(method)) {
+        // Posts follow the blog module: visitors can read them once one is published.
+        const owner = auth.authenticated(request);
+        if (!owner && !publicPage((await store.read()).published, registry).modules.some(item => item.type === 'blog')) return json(response, 404, { error: '博客尚未公开。' });
+        if (route === '/api/blog') return json(response, 200, blog.list(owner));
+        if (route === '/api/blog/post') {
+          const post = blog.post(url.searchParams.get('slug'));
+          return post ? json(response, 200, post) : json(response, 404, { error: '没有这篇文章。' });
+        }
+        if (route.startsWith('/api/blog/asset/')) {
+          const image = await blog.asset(route.slice('/api/blog/asset/'.length));
+          if (image) return asset(request, response, image.file, image.type, true);
+        }
+        return json(response, 404, { error: 'Not found' });
+      }
       if (route === '/api/health' && method === 'GET') return json(response, 200, { ok: true, version: config.version, commit: config.commit });
       if (route === '/api/page' && method === 'GET') {
         const state = await store.read();
@@ -223,6 +241,7 @@ export async function createApp(config) {
           try { return json(response, 200, await dca.search(name)); }
           catch { return json(response, 503, { error: '标的搜索暂时不可用，请稍后重试。' }); }
         }
+        if (route === '/api/admin/blog/sync' && method === 'POST') return json(response, 200, await blog.sync(true));
         if (route === '/api/admin/media' && method === 'POST') {
           if (mediaUploads >= 2) return json(response, 429, { error: '有素材正在上传，请稍后再试。' });
           mediaUploads++;
@@ -265,7 +284,7 @@ export async function createApp(config) {
           return json(response, 200, await store.mutate(payload.revision, state => ({ ...state, published: validatePage(state.draft, registry), publishedAt: new Date().toISOString() })));
         }
       }
-      if (method === 'GET' && (['/', '/public', '/public/', '/private', '/private/', '/edit', '/edit/', '/lab', '/lab/'].includes(route) || /^\/private\/[a-z0-9][a-z0-9-]{0,23}\/?$/.test(route))) {
+      if (method === 'GET' && (['/', '/public', '/public/', '/private', '/private/', '/edit', '/edit/', '/lab', '/lab/'].includes(route) || /^\/private\/[a-z0-9][a-z0-9-]{0,23}\/?$/.test(route) || /^\/post\/[^/]{1,720}$/.test(route))) {
         const state = appearance.publicState(await appearance.read());
         const nonce = randomBytes(16).toString('base64');
         response.setHeader('Content-Security-Policy', response.getHeader('Content-Security-Policy').replace("style-src 'self'", `style-src 'self' 'nonce-${nonce}'`));
@@ -291,8 +310,9 @@ export async function createApp(config) {
       else response.end();
     }
   });
-  server.on('close', () => visitors.close());
+  server.on('close', () => { visitors.close(); blog.close(); });
+  server.on('listening', () => blog.start());
   server.requestTimeout = 60_000;
   server.headersTimeout = 10_000;
-  return { server, store, registry, appearance, visitors };
+  return { server, store, registry, appearance, visitors, blog };
 }

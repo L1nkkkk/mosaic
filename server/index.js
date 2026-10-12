@@ -15,6 +15,9 @@ const app = await createApp({
   sessionSecret: process.env.SESSION_SECRET,
   statusFile: process.env.STATUS_FILE || '/status/status.json',
   proxyStatusFile: process.env.PROXY_STATUS_FILE || '/status/proxies.json',
+  blogRepo: process.env.BLOG_REPO,
+  blogBranch: process.env.BLOG_BRANCH,
+  blogToken: process.env.BLOG_TOKEN,
   version: pkg.version,
   commit: process.env.GIT_SHA || 'development',
 });

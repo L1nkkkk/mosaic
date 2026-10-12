@@ -531,3 +531,14 @@ imageElement(img, data.cover, data.title);
 - 标的只能从编辑台的搜索结果里选（`admin/securities`），模块不接受任意上游地址。
 
 检查：`npm test`（`test/dca.test.js` 与 `test/app.test.js` 里的接口测试）。
+
+## 博客模块
+
+`blog` 是生命周期模块，内容字段只有标题、显示篇数（1–30）和可选的标签筛选；文章本身不存在页面草稿里。`load()` 读取 `blog`，列表只在要显示的内容变化时重建。
+
+- 文章来自 `server/blog.js`：它把 GitHub 仓库 `posts/` 下的 Markdown 同步到 `DATA_DIR/blog`，用 `server/markdown.js` 渲染成 HTML 后保存。渲染器只输出自己写出的标签，原始 HTML 一律转义，链接和图片地址分别经过 `link`、`image` 回调，所以客户端可以直接放进页面。
+- 阅读页是 `modules/blog/reader.js`，由核心在 `/post/<名称>` 路由上按需导入；它和卡片共用 `style.css` 里的一套纸张配色，不使用全站主题色。顶部的阅读进度条由 CSS 滚动时间线驱动，没有脚本。
+- 编辑台和实验台里，文章链接在新标签页打开，避免离开时丢掉未保存的改动。
+- 核心为它做了三处改动：`/post/…` 返回应用页面、`web/app.js` 里的 `showPost()`，以及 `api/blog` 这组接口（见 [HTTP 参考](HTTP-API.md)）。
+
+检查：`npm test`（`test/blog.test.js`，包括用假的 GitHub 接口跑完整同步）。

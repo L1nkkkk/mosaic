@@ -572,3 +572,15 @@ state = await requestJSON('admin/publish', 'POST', {
 - `GET /api/admin/securities?name=沪深300`：管理员；2～40 字的名称或代码，返回 `{ items: [{symbol,name,code,kind}] }`，最多 8 项，只保留指数、场内基金、场外基金、A 股、港股和美股。
 
 行情来自东方财富的固定地址：指数、ETF 和股票用前复权日线，场外基金用单位净值并按公布的日增长率还原分红与拆分。每个标的的 10 年行情缓存 30 分钟，同一标的的所有计划、时长和均价都从这一份计算；基金类型缓存 24 小时，搜索缓存 1 小时；上游失败返回 503，不返回原始响应。
+
+## 博客接口（0.21）
+
+| 路由 | 说明 |
+| --- | --- |
+| `GET /api/blog` | 文章列表，新的在前：`{configured,syncedAt,posts:[{slug,title,date,tags,summary,minutes}]}`。主人另外得到 `status:{repo,branch,commit,checkedAt,error}`。 |
+| `GET /api/blog/post?slug=…` | 单篇文章：列表里的字段加上 `html`，以及相邻的 `newer`、`older`（`{slug,title}` 或 null）。不存在返回 404。 |
+| `GET /api/blog/asset/<sha>.<扩展名>` | 文章引用的图片，按内容命名，长期缓存。只提供已同步文章引用到的文件。 |
+| `POST /api/admin/blog/sync` | 需要登录。立即同步一次，返回与主人读取 `api/blog` 相同的结构；没有配置仓库返回 400，GitHub 不可用返回 503 并保留原有文章。 |
+| `GET /post/<名称>` | 返回应用页面，由浏览器读取上面的接口显示文章。 |
+
+前三个接口对主人始终可用；匿名访问只有在公开页已发布博客模块时可用，否则返回 404。草稿（`draft: true`）不会出现在任何响应里。`html` 由服务端渲染，只包含固定的一组标签。
