@@ -37,6 +37,20 @@ Public 是对外展示的空间，Private 是自己的工作台。模块实例�
 
 升级不需要迁移：原有页面两个空间的排布相同，数据保持原来的形状；只有两边出现差异后才写入 `spaces`。模块上的 `audience`、`visible`、`layout` 继续由服务端按公开空间推导并写入，旧版本读取时仍然只会公开应当公开的模块。
 
+## 博客（0.21）
+
+「博客」模块列出最近的文章，点开后在单独的页面 `/post/<名称>` 阅读。文章不在编辑台里写：它们是一个 GitHub 仓库 `posts/` 目录下的 Markdown 文件，推送后由服务器同步过来，不需要发布。
+
+- **配置**：在 `app.env` 里设置 `BLOG_REPO=owner/name`，可选 `BLOG_BRANCH`（默认 `main`）和 `BLOG_TOKEN`（私有仓库必需，只读权限即可）。没有配置时模块显示为空，应用照常启动。修改后需要重建容器才生效。
+- **同步**：每 5 分钟查一次分支的最新提交，用条件请求，没有变化时不占 GitHub 的请求额度；有变化时只下载改过的文件。编辑台里这个模块的设置中有「立即同步」。只访问 `api.github.com`，不依赖 `raw.githubusercontent.com`。同步失败时保留上一份，访客读到的始终是服务器上的副本。
+- **文章格式**：文件名决定地址，`posts/2026-10-13-hello.md` 对应 `/post/hello`。开头可以用 front matter 写 `title`、`date`、`tags`、`summary`、`draft`；缺少时标题取第一个一级标题，日期取文件名。`draft: true` 的文章不会同步出来。
+- **图片与链接**：图片放在仓库里用相对路径引用，同步到 `DATA_DIR/blog/assets` 后由本站提供；外链图片不显示，变成一个链接。指向另一篇文章的 `.md` 相对链接会变成站内地址。
+- **渲染**：服务端自带的小型 Markdown 渲染器，只输出固定的一组标签，文章里的 HTML 按文字显示。支持标题、列表、任务列表、引用、代码块、表格、分隔线、链接和图片，没有代码高亮。
+- **可见范围**：访客只有在公开页发布了博客模块之后才能读到文章和图片；撤下模块，文章地址随之返回 404。
+- **限制**：最多 300 篇，单篇 256 KB，图片单张 5 MB、共 400 张。`DATA_DIR/blog` 只是仓库的副本，丢失后会重新同步，不必备份。
+
+检查：`npm test`（`test/blog.test.js`）。
+
 ## 便签本（0.20）
 
 「待办清单」模块改成了一本活页便签，原有清单不用迁移。
@@ -195,7 +209,7 @@ sudo systemctl enable --now mosaic-status.timer
 
 单管理员密码使用 scrypt 哈希。会话签名、12 小时有效、HTTPS 下使用 Secure Cookie，写入请求校验来源，登录有速率限制。更换密码时同时轮换 `SESSION_SECRET` 以使已有会话失效。请通过备份文件恢复历史内容；第一版没有编辑历史和多人协作。
 
-配置项：`PUBLIC_ORIGIN`（只包含协议与域名/端口）、`BASE_PATH`（可选，例如 `/mosaic`）、`ADMIN_PASSWORD_HASH`、`SESSION_SECRET`、`DATA_DIR`、`STATUS_FILE`（默认 `/status/status.json`）、`PORT`、`HOST`。生产容器监听内部网络，由 HTTPS 反向代理提供访问。
+配置项：`PUBLIC_ORIGIN`（只包含协议与域名/端口）、`BASE_PATH`（可选，例如 `/mosaic`）、`ADMIN_PASSWORD_HASH`、`SESSION_SECRET`、`DATA_DIR`、`STATUS_FILE`（默认 `/status/status.json`）、`PORT`、`HOST`，以及博客用的 `BLOG_REPO`、`BLOG_BRANCH`、`BLOG_TOKEN`（可选）。生产容器监听内部网络，由 HTTPS 反向代理提供访问。
 
 ## GitHub → 自有服务器
 

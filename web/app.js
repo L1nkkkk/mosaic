@@ -68,6 +68,7 @@ const editing = /^edit\/?$/.test(route());
 const laboratory = /^lab\/?$/.test(route());
 const privateArea = laboratory || editing || /^private(\/|$)/.test(route());
 const requestedPage = () => route().match(/^private\/([a-z0-9-]+)/)?.[1];
+const requestedPost = () => route().match(/^post\/([^/]+)$/)?.[1];
 const logo = '<img src="web/mark.svg" width="28" height="28" alt=""><span>Mosaic<span class="brand-cn">拼页</span></span>';
 
 function notice(message, error = false) {
@@ -674,6 +675,15 @@ async function loadEditor() {
   startRefresh(async () => { await refreshResources(state.draft); updatePreview(); });
 }
 
+// A post is read on a page of its own; the blog module brings the reader and its typography.
+async function showPost() {
+  const { openPost } = await import('../modules/blog/reader.js');
+  const shell = document.createElement('div'); shell.className = 'public-shell post-shell';
+  let slug = ''; try { slug = decodeURIComponent(requestedPost()); } catch { /* An address that cannot be decoded names no post. */ }
+  await openPost({ root: shell, slug, request: api, footer: footer() });
+  app.replaceChildren(shell); mountShell(app, 'public');
+}
+
 async function showLab() { await loadModules(true); const { openLab } = await import('./lab.js'); disposeModules(); await openLab({ app, catalog, definitions, request: api }); mountShell(app, 'lab'); }
 
 window.addEventListener('pagehide', disposeModules);
@@ -686,7 +696,8 @@ try {
     if (session.authenticated) {
       if (laboratory) await showLab(); else if (editing) await loadEditor(); else await showPrivate();
     } else showLogin();
-  } else { await showPublic(); }
+  } else if (requestedPost()) { await showPost(); }
+  else { await showPublic(); }
 } catch (error) {
   app.innerHTML = `<main class="loading-shell"><img src="web/mark.svg" width="42" height="42" alt=""><h1>页面加载失败</h1><p>${escape(error.message)}</p><button class="button primary" id="retry">重新载入</button></main>`;
   document.querySelector('#retry').onclick = () => location.reload();
