@@ -1,12 +1,66 @@
-.todo-module { padding: clamp(20px, 5cqi, 28px); background: var(--white); border: 1px solid var(--line); border-radius: 9px; }
-.todo-module h2 { margin: 0 0 24px; font-size: clamp(18px, 5cqi, 24px); }
-.todo-module ul { list-style: none; margin: 0; padding: 0; }
-.todo-module li { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid var(--line); }
-.todo-module li label { display: flex; align-items: center; gap: 12px; flex: 1; overflow-wrap: anywhere; }
-.todo-module input[type="checkbox"] { width: 20px; height: 20px; flex: none; accent-color: var(--violet); }
-.todo-module .done span { color: var(--muted); text-decoration: line-through; }
-.todo-module form { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
-.todo-module form input { flex: 1; min-width: 120px; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--ink); }
-.todo-module button { border: 0; padding: 8px 12px; border-radius: 6px; background: var(--violet-soft); color: var(--violet); cursor: pointer; }
-.todo-module [hidden] { display: none; }
-.todo-module .todo-status { color: var(--muted); font-size: 13px; min-height: 1.5em; }
+/* A ring-bound notepad in both themes: the module keeps its own paper and ink. Everything sits on a ruled grid one --rule tall. */
+.todo-module { --rule:34px; --gutter:46px; --todo-paper:#f8f1dc; --todo-ink:#26304d; --todo-pencil:#8a8473; --todo-red:#b8392e; --todo-green:#3f7a52; --todo-hand:"Segoe Print","Bradley Hand","Kaiti SC","STKaiti","KaiTi","楷体",cursive;
+  position:relative; min-width:0; padding:var(--rule) 0 0; border:1px solid #0003; color:var(--todo-ink); font:18px/var(--rule) var(--todo-hand);
+  background:linear-gradient(90deg,#0000 37px,#e2857f 37px 38.5px,#0000 38.5px),repeating-linear-gradient(#0000 0 calc(var(--rule) - 1px),#a9bcd8b3 calc(var(--rule) - 1px) var(--rule)),var(--todo-paper); }
+:root:not([data-theme="light"]) .todo-module { --todo-paper:#ebe3cc; }
+/* The binding: a strip of punched holes, each with a wire ring coming over the top edge. */
+.todo-module::before { content:""; position:absolute; inset:0 0 auto; height:var(--rule); border-bottom:1px solid #0000001f;
+  background:linear-gradient(90deg,#0000 9px,#6f7481 9px,#eef0f4 12px,#9a9fab 15px,#565a65 17px,#0000 17px) center top/26px 19px repeat-x,radial-gradient(circle at 50% 19px,#1c1a24 0 4.4px,#0000 5px) center top/26px 100% repeat-x,linear-gradient(#0000001a,#0000 70%),var(--todo-paper); }
+.todo-module [hidden] { display:none; }
+.todo-module ul { list-style:none; margin:0; padding:0; }
+.todo-module button { margin:0; border:0; background:none; color:inherit; font:inherit; cursor:pointer; }
+.todo-module button:disabled,.todo-module input:disabled { cursor:default; }
+.todo-module :focus-visible { outline:2px solid #4a6fb5; outline-offset:2px; }
+.todo-head { display:flex; align-items:baseline; gap:12px; height:var(--rule); padding:0 14px 0 var(--gutter); }
+.todo-head h2 { flex:1; min-width:0; margin:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font:700 22px/var(--rule) var(--todo-hand); }
+.todo-tally { flex:none; font-size:13px; color:var(--todo-red); }
+.todo-module li { position:relative; display:flex; align-items:flex-start; gap:6px; min-height:var(--rule); padding-right:10px; }
+.todo-module li label { flex:0 1 auto; min-width:0; display:flex; align-items:flex-start; gap:10px; padding-left:8px; cursor:pointer; overflow-wrap:anywhere; }
+/* Six dots in the margin; the row is dragged by them. */
+.todo-module .todo-grip { flex:none; width:38px; height:var(--rule); margin-right:-6px; touch-action:none; user-select:none; cursor:grab; opacity:0; transition:opacity .15s;
+  background:radial-gradient(circle,var(--todo-pencil) 1.4px,#0000 1.9px) center/7px 7px repeat; background-clip:content-box; padding:7px 12px; }
+.todo-module li:hover .todo-grip,.todo-grip:focus-visible { opacity:.55; }
+.todo-module li .todo-grip:hover,.is-dragged .todo-grip { opacity:1; }
+.is-sorting li { transition:transform .16s ease; }
+.todo-module li.is-dragged { z-index:2; rotate:-.5deg; transition:none; background:var(--todo-paper); box-shadow:0 8px 16px -8px #0007,inset 0 -1px #a9bcd8b3; }
+.is-sorting .todo-grip { cursor:grabbing; }
+/* A pen-drawn box; the tick is revealed from the left, the way it is written. */
+.todo-module input[type="checkbox"] { appearance:none; position:relative; flex:none; width:18px; height:18px; margin:8px 0 0; border:1.6px solid var(--todo-ink); border-radius:4px 7px 5px 8px/7px 4px 8px 5px; background:#fff6; cursor:pointer; }
+.todo-module input[type="checkbox"]::after { content:""; position:absolute; inset:-7px -9px -1px -2px; clip-path:inset(0 100% 0 0); transition:clip-path .22s ease-out;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24'%3E%3Cpath d='M4 13c2 2 4 5 6 8C13 13 18 7 24 3' fill='none' stroke='%23b8392e' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/100% 100% no-repeat; }
+.todo-module input[type="checkbox"]:checked::after { clip-path:inset(0); }
+/* One stroke through the text; on wrapped text it runs line after line. */
+.todo-text { background:linear-gradient(var(--todo-ink),var(--todo-ink)) 0 54%/0 1.5px no-repeat; transition:background-size .4s ease-out,color .4s; }
+.done .todo-text { background-size:100% 1.5px; color:var(--todo-pencil); }
+/* Date and repeat marks: pencil while unset, inked once they mean something. */
+.todo-module .todo-due,.todo-module .todo-repeat { flex:none; height:22px; margin-top:6px; padding:0 7px; border:1px dashed #8a847399; border-radius:9px 12px 10px 13px/12px 9px 13px 10px; font-size:13px; line-height:20px; white-space:nowrap; color:var(--todo-pencil); }
+.todo-module .todo-due[data-state="later"],.todo-module .todo-due[data-state="soon"] { border-style:solid; border-color:#26304d66; color:var(--todo-ink); }
+.todo-module .todo-due[data-state="today"] { border:1.5px solid #c7791f; color:#a35f10; }
+.todo-module .todo-due[data-state="late"] { border:1.5px solid var(--todo-red); color:var(--todo-red); }
+.todo-module li>.todo-repeat,.todo-module .todo-repeat[aria-pressed="true"] { border:1.5px solid var(--todo-green); color:var(--todo-green); }
+.done .todo-due[data-state] { border:1px solid #8a847366; color:var(--todo-pencil); }
+/* What can still be done to a row appears at its end, over the paper. */
+.todo-tools { position:absolute; top:0; right:6px; height:calc(var(--rule) - 1px); display:flex; align-items:flex-start; gap:5px; padding-left:22px; background:linear-gradient(90deg,#0000,var(--todo-paper) 18px); opacity:0; pointer-events:none; transition:opacity .15s; }
+.todo-module li:hover .todo-tools,.todo-module li:focus-within .todo-tools { opacity:1; pointer-events:auto; }
+.is-sorting .todo-tools { display:none; }
+.todo-module .todo-remove { width:24px; height:var(--rule); padding:0; font-size:20px; line-height:calc(var(--rule) - 2px); color:var(--todo-pencil); }
+.todo-module .todo-remove:hover { color:var(--todo-red); }
+.todo-module .todo-due:not(:disabled):hover,.todo-module .todo-repeat:not(:disabled):hover { border-style:solid; }
+.todo-picker { position:absolute; right:0; bottom:0; width:1px; height:1px; padding:0; border:0; opacity:0; pointer-events:none; }
+.todo-empty { margin:0; padding-left:var(--gutter); font-size:15px; color:var(--todo-pencil); }
+/* The next blank line is where a new task is written. */
+.todo-add { position:relative; display:flex; flex-wrap:wrap; align-items:flex-start; gap:0 6px; min-height:var(--rule); padding:0 10px 0 var(--gutter); }
+.todo-add::before { content:"＋"; position:absolute; left:0; width:38px; text-align:center; font-size:15px; color:var(--todo-pencil); }
+.todo-add input[name="task"] { flex:1 1 110px; min-width:0; height:var(--rule); padding:0; border:0; background:none; color:var(--todo-ink); font:inherit; outline:0; }
+.todo-add input[name="task"]::placeholder { color:#8a8473b3; }
+.todo-add input[name="task"]:focus { box-shadow:inset 0 -2px #4a6fb5; }
+.todo-module .todo-submit { height:var(--rule); padding:0 4px; font-size:15px; color:var(--todo-pencil); }
+.todo-module .todo-submit:not(:disabled):hover,.todo-add:focus-within .todo-submit { color:var(--todo-ink); }
+.todo-archive summary { padding-left:var(--gutter); font-size:14px; color:var(--todo-pencil); cursor:pointer; }
+.todo-module .todo-clear { display:block; height:var(--rule); margin-left:auto; padding:0 12px; font-size:13px; color:var(--todo-pencil); }
+.todo-module .todo-clear:not(:disabled):hover { color:var(--todo-red); }
+.todo-status { height:var(--rule); margin:0; padding:0 12px 0 var(--gutter); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; text-align:right; font:12px/var(--rule) Inter,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--todo-pencil); }
+/* No hover to reveal them on a touch screen, so the controls stay faintly in place. */
+@media (hover:none) { .todo-grip { opacity:.45; }.todo-tools { position:static; padding-left:0; background:none; opacity:1; pointer-events:auto; margin-left:auto; } }
+@container (max-width:300px) { .todo-tally { display:none; } }
+@media (prefers-reduced-motion:reduce) { .todo-text,.todo-module input[type="checkbox"]::after,.is-sorting li,.todo-grip,.todo-tools { transition:none; } }
