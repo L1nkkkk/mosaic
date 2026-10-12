@@ -451,6 +451,8 @@ Shadow DOM 只隔离样式，不隔离权限。当前模块仍是经维护者审
 - WebGL：[`modules/shader/client.js`](../modules/shader/client.js)，真实 fragment shader、resize、frame、context lost / restored 与 dispose。
 - 从零复制：[`examples/live-card`](../examples/live-card/)，最小生命周期模板。
 
+待办是一本便签，所有内容都落在一格 `--rule` 高的横线上，所以横线只是根元素上一张重复的背景。事项除 `id / text / done` 外可以带 `due`（`YYYY-MM-DD`）、`daily` 和 `doneAt`，只有设置了才写入，旧清单保持原样；`modules/todo/items.js` 同时被定义和客户端导入，负责日期和列表规则，不能访问 DOM。校验不依赖当前日期：每日事项是否算完成由客户端拿 `doneAt` 和读者当天比较，过期的勾在下一次保存时顺带去掉。保存途中先按请求的内容显示（`pending`），失败再退回。拖动排序只在按下时测量一次各行位置，之后只改 `transform`；刚勾掉的事项先留在原位把划线画完，再移到「已完成」。检查：`npm test`（`test/todo.test.js`）与 `node test/browser/todo.mjs`。
+
 实验台默认模拟数据；可切换成功、失败、空数据或显式读取真实接口。选择模块后能改宽高、外观、字段或 JSON，查看 mounted / active / size / reducedMotion / failed 状态，暂停或重新挂载。显示宽度会受实验台可用空间限制，运行状态里的 size 是实际值。实验台需要登录；它使用与正式页相同的宿主，不额外实现另一套渲染器。
 
 ## 11. 明暗主题适配
