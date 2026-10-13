@@ -8,17 +8,42 @@ import { renderMarkdown, plainText, externalLink } from './markdown.js';
 const IMAGES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif' };
 const ASSET = /^[a-f0-9]{40}\.(png|jpe?g|gif|webp|avif)$/;
 const SHA = /^[a-f0-9]{40}$/;
-const SOURCE = /^posts\/[^/]+\.md$/i;
-const MAX_POSTS = 300, MAX_SOURCE = 256 * 1024, MAX_IMAGE = 5 * 1024 * 1024, MAX_IMAGES = 400;
+const SOURCE = /^posts\/[^/]+\.(md|html)$/i;
+const PAGE = /^[a-f0-9]{40}\.html$/;
+const MAX_POSTS = 300, MAX_SOURCE = 256 * 1024, MAX_PAGE = 1024 * 1024, MAX_IMAGE = 5 * 1024 * 1024, MAX_IMAGES = 400;
 const INTERVAL = 5 * 60_000;
 
 export function slugOf(file) {
-  return path.posix.basename(file).replace(/\.md$/i, '').replace(/^\d{4}-\d{2}-\d{2}-?/, '').normalize('NFC').toLowerCase()
+  return path.posix.basename(file).replace(/\.(md|html)$/i, '').replace(/^\d{4}-\d{2}-\d{2}-?/, '').normalize('NFC').toLowerCase()
     .replace(/[\s_]+/g, '-').replace(/[^\p{L}\p{N}-]/gu, '').replace(/-{2,}/g, '-').replace(/^-|-$/g, '').slice(0, 80);
 }
 
 const unquote = value => value.replace(/^(["'])(.*)\1$/, '$2').trim();
 const day = value => { const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || ''); return match && !Number.isNaN(Date.parse(match[0])) ? match[0] : ''; };
+const minutes = words => Math.max(1, Math.round(((words.match(/[\u2e80-\u9fff\uf900-\ufaff]/g) || []).length + (words.replace(/[\u2e80-\u9fff\uf900-\ufaff]/g, ' ').match(/[\p{L}\p{N}]+/gu) || []).length) / 400));
+const clip = (text, length) => text.length > length ? `${text.slice(0, length - 2).trimEnd()}…` : text;
+const labels = list => [...new Set(list.map(tag => unquote(tag.trim()).slice(0, 30)).filter(Boolean))].slice(0, 8);
+
+// Followed links leave the frame a page post is shown in, except those within the page itself.
+const OUTWARD = '<script>addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a[href]");if(a&&a.getAttribute("href").charAt(0)!=="#")a.target="_blank"},true)</script>';
+const entities = text => text.replace(/&(amp|lt|gt|quot|nbsp|#39|#x27);/gi, (_, name) => ({ amp: '&', lt: '<', gt: '>', quot: '"', nbsp: ' ', '#39': "'", '#x27': "'" })[name.toLowerCase()]);
+
+// A post written as a whole HTML page describes itself in its <title> and <meta name="…"> tags.
+export function parsePage(source, file) {
+  const head = /<head[\s>][\s\S]*?<\/head\s*>/i.exec(source)?.[0] || source.slice(0, 20_000), found = {};
+  for (const tag of head.match(/<meta\b[^>]*>/gi) || []) {
+    const name = /\bname\s*=\s*["']?([\w:-]+)/i.exec(tag)?.[1].toLowerCase(), content = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+    if (name && content && !(name in found)) found[name] = entities(content[1] ?? content[2]).trim();
+  }
+  const name = path.posix.basename(file).replace(/\.html$/i, ''), title = entities(/<title[^>]*>([\s\S]*?)<\/title\s*>/i.exec(head)?.[1] || '').replace(/\s+/g, ' ').trim();
+  const words = entities(source.replace(/<(script|style|template)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<!--[\s\S]*?-->/g, ' ').replace(/<[^>]+>/g, ' '));
+  const close = /<\/head\s*>/i.exec(source);
+  return {
+    title: (title || name).slice(0, 160), date: day(found.date || '') || day(name), tags: labels((found.tags || found.keywords || '').split(/[,，]/)),
+    summary: clip((found.description || '').replace(/\s+/g, ' '), 160), draft: /^(true|yes|1)$/i.test(found.draft || ''), minutes: minutes(words),
+    page: close ? source.slice(0, close.index) + OUTWARD + source.slice(close.index) : OUTWARD + source,
+  };
+}
 
 // Front matter is a few `key: value` lines; a list may also be written one `- item` per line.
 export function parsePost(source, file) {
@@ -37,12 +62,10 @@ export function parsePost(source, file) {
   }
   const name = path.posix.basename(file).replace(/\.md$/i, '');
   const words = plainText(body), summary = unquote(fields.summary || fields.description || '') || plainText(body.split(/\r?\n[ \t]*\r?\n/).find(part => part.trim() && !/^\s*(#|```|~~~|!\[|>|\|)/.test(part)) || '');
-  const count = (words.match(/[⺀-鿿豈-﫿]/g) || []).length + (words.replace(/[⺀-鿿豈-﫿]/g, ' ').match(/[\p{L}\p{N}]+/gu) || []).length;
   return {
     title: (title || name).slice(0, 160), date: day(unquote(fields.date || '')) || day(name),
-    tags: [...new Set(unquote(fields.tags || '').replace(/^\[|\]$/g, '').split(',').map(tag => unquote(tag.trim()).slice(0, 30)).filter(Boolean))].slice(0, 8),
-    summary: summary.length > 160 ? `${summary.slice(0, 158).trimEnd()}…` : summary,
-    draft: /^(true|yes|1)$/i.test(unquote(fields.draft || '')), minutes: Math.max(1, Math.round(count / 400)), body,
+    tags: labels(unquote(fields.tags || '').replace(/^\[|\]$/g, '').split(',')), summary: clip(summary, 160),
+    draft: /^(true|yes|1)$/i.test(unquote(fields.draft || '')), minutes: minutes(words), body,
   };
 }
 
@@ -71,14 +94,20 @@ export class Blog {
   close() { clearInterval(this.timer); this.timer = undefined; }
 
   list(owner = false) {
-    const posts = this.state.posts.filter(post => !post.draft).map(({ slug, title, date, tags, summary, minutes }) => ({ slug, title, date, tags, summary, minutes }));
+    const posts = this.state.posts.filter(post => !post.draft).map(({ slug, title, date, tags, summary, minutes, page }) => ({ slug, title, date, tags, summary, minutes, ...(page ? { kind: 'page' } : {}) }));
     return { configured: this.configured, syncedAt: this.state.syncedAt || null, posts, ...(owner ? { status: { repo: this.repo, branch: this.branch, commit: this.state.commit || null, checkedAt: this.checkedAt || null, error: this.error || null } } : {}) };
   }
   post(slug) {
     const posts = this.state.posts.filter(post => !post.draft), index = posts.findIndex(post => post.slug === slug);
     if (index < 0) return null;
-    const { slug: _, title, date, tags, summary, minutes, html } = posts[index], near = post => post ? { slug: post.slug, title: post.title } : null;
-    return { slug, title, date, tags, summary, minutes, html, newer: near(posts[index - 1]), older: near(posts[index + 1]) };
+    const { slug: _, title, date, tags, summary, minutes, html, page } = posts[index], near = post => post ? { slug: post.slug, title: post.title } : null;
+    return { slug, title, date, tags, summary, minutes, ...(page ? { page: `api/blog/page/${encodeURIComponent(slug)}` } : { html }), newer: near(posts[index - 1]), older: near(posts[index + 1]) };
+  }
+  async page(slug) {
+    const name = this.state.posts.find(post => !post.draft && post.slug === slug)?.page;
+    if (!name || !PAGE.test(name)) return null;
+    try { return await readFile(path.join(this.directory, 'pages', name)); }
+    catch (error) { if (error.code === 'ENOENT') return null; throw error; }
   }
   async asset(name) {
     if (!ASSET.test(name) || !this.state.posts.some(post => !post.draft && Object.values(post.images || {}).includes(name))) return null;
@@ -133,12 +162,21 @@ export class Blog {
     if (listing.truncated || !Array.isArray(listing.tree)) throw Object.assign(new Error('Tree unavailable'), { public: '仓库文件太多，无法完整读取。' });
     const files = new Map(listing.tree.filter(entry => entry?.type === 'blob' && typeof entry.path === 'string' && SHA.test(entry.sha)).map(entry => [entry.path, entry]));
     const previous = new Map(this.state.posts.map(post => [post.path, post]));
-    const posts = [], slugs = new Set();
+    const posts = [], slugs = new Set(), saved = folder => readdir(path.join(this.directory, folder)).then(names => new Set(names), () => new Set());
+    const pages = await saved('pages');
     // Dated file names sort newest last; the newest are kept when a repository holds too many.
     for (const file of [...files.keys()].filter(name => SOURCE.test(name)).sort().reverse().slice(0, MAX_POSTS)) {
       const entry = files.get(file), slug = slugOf(file), known = previous.get(file);
-      if (!slug || slugs.has(slug) || entry.size > MAX_SOURCE) continue;
+      const whole = /\.html$/i.test(file);
+      if (!slug || slugs.has(slug) || entry.size > (whole ? MAX_PAGE : MAX_SOURCE)) continue;
       slugs.add(slug);
+      if (whole) {
+        if (known?.blob === entry.sha && (known.draft || pages.has(known.page))) { posts.push(known); continue; }
+        const { page, draft, ...meta } = parsePage((await this.#get(`${api}/git/blobs/${entry.sha}`, 'application/vnd.github.raw', MAX_PAGE)).body.toString('utf8'), file);
+        if (!draft) await this.#write(path.join('pages', `${entry.sha}.html`), page);
+        posts.push(draft ? { slug, path: file, blob: entry.sha, draft: true } : { slug, path: file, blob: entry.sha, ...meta, page: `${entry.sha}.html` });
+        continue;
+      }
       const current = address => { const image = files.get(address); return image && image.size <= MAX_IMAGE ? `${image.sha}.${address.split('.').at(-1).toLowerCase()}` : ''; };
       if (known?.blob === entry.sha && Object.entries(known.images || {}).every(([address, name]) => current(address) === name)) { posts.push(known); continue; }
       const parsed = parsePost((await this.#get(`${api}/git/blobs/${entry.sha}`, 'application/vnd.github.raw', MAX_SOURCE)).body.toString('utf8'), file);
@@ -168,12 +206,13 @@ export class Blog {
     }
     const wanted = new Set(posts.flatMap(post => Object.values(post.images || {})).filter(Boolean));
     if (wanted.size > MAX_IMAGES) throw Object.assign(new Error('Too many images'), { public: `文章里的图片超过 ${MAX_IMAGES} 张。` });
-    const stored = new Set(await readdir(path.join(this.directory, 'assets')).catch(() => []));
+    const stored = await saved('assets');
     for (const name of wanted) if (!stored.has(name)) await this.#write(path.join('assets', name), (await this.#get(`${api}/git/blobs/${name.slice(0, 40)}`, 'application/vnd.github.raw', MAX_IMAGE)).body);
     posts.sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.slug.localeCompare(b.slug));
     const next = { repo: this.repo, branch: this.branch, commit, etag: head.etag, syncedAt: new Date().toISOString(), posts };
     await this.#write('state.json', JSON.stringify(next));
     this.state = next;
     for (const name of stored) if (!wanted.has(name)) await unlink(path.join(this.directory, 'assets', name)).catch(() => {});
+    for (const name of await saved('pages')) if (!posts.some(post => post.page === name)) await unlink(path.join(this.directory, 'pages', name)).catch(() => {});
   }
 }

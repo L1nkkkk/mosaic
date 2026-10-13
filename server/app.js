@@ -85,7 +85,7 @@ export async function createApp(config) {
     response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     response.setHeader('X-Frame-Options', 'DENY');
     response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.music.126.net; connect-src 'self'; media-src 'self' https:; frame-src https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
+    response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.music.126.net; connect-src 'self'; media-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'");
     try {
       const url = new URL(request.url, publicOrigin);
       if (basePath && url.pathname !== basePath && !url.pathname.startsWith(`${basePath}/`)) return json(response, 404, { error: 'Not found' });
@@ -152,6 +152,16 @@ export async function createApp(config) {
         if (route.startsWith('/api/blog/asset/')) {
           const image = await blog.asset(route.slice('/api/blog/asset/'.length));
           if (image) return asset(request, response, image.file, image.type, true);
+        }
+        if (route.startsWith('/api/blog/page/')) {
+          let slug = ''; try { slug = decodeURIComponent(route.slice('/api/blog/page/'.length)); } catch { /* Names no post. */ }
+          const page = await blog.page(slug);
+          if (page) {
+            // The page is the author's own HTML. It runs without this site's origin, cookies or network access.
+            response.removeHeader('X-Frame-Options');
+            response.setHeader('Content-Security-Policy', "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https:; font-src https: data:; img-src https: data: blob:; media-src https: data: blob:; form-action 'none'; frame-ancestors 'self'");
+            return asset(request, response, page, 'text/html; charset=utf-8');
+          }
         }
         return json(response, 404, { error: 'Not found' });
       }
