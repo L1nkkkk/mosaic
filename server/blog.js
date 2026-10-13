@@ -12,6 +12,8 @@ const SOURCE = /^posts\/[^/]+\.(md|html)$/i;
 const PAGE = /^[a-f0-9]{40}\.html$/;
 const MAX_POSTS = 300, MAX_SOURCE = 256 * 1024, MAX_PAGE = 1024 * 1024, MAX_IMAGE = 5 * 1024 * 1024, MAX_IMAGES = 400;
 const INTERVAL = 5 * 60_000;
+// Raised whenever posts are read or rendered differently, so a copy made by an older version is rebuilt.
+const FORMAT = 2;
 
 export function slugOf(file) {
   return path.posix.basename(file).replace(/\.(md|html)$/i, '').replace(/^\d{4}-\d{2}-\d{2}-?/, '').normalize('NFC').toLowerCase()
@@ -82,7 +84,9 @@ export class Blog {
     // This is a copy of the repository: one that cannot be read is simply fetched again.
     try {
       const saved = JSON.parse(await readFile(path.join(this.directory, 'state.json'), 'utf8'));
-      if (saved.repo === this.repo && saved.branch === this.branch && Array.isArray(saved.posts)) this.state = saved;
+      if (saved.repo !== this.repo || saved.branch !== this.branch || !Array.isArray(saved.posts)) return;
+      // An older copy keeps serving its posts, but nothing in it counts as up to date.
+      this.state = saved.format === FORMAT ? saved : { repo: saved.repo, branch: saved.branch, syncedAt: saved.syncedAt, posts: saved.posts.map(({ blob: _, ...post }) => post) };
     } catch { /* Start from an empty copy. */ }
   }
   start() {
@@ -209,7 +213,7 @@ export class Blog {
     const stored = await saved('assets');
     for (const name of wanted) if (!stored.has(name)) await this.#write(path.join('assets', name), (await this.#get(`${api}/git/blobs/${name.slice(0, 40)}`, 'application/vnd.github.raw', MAX_IMAGE)).body);
     posts.sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.slug.localeCompare(b.slug));
-    const next = { repo: this.repo, branch: this.branch, commit, etag: head.etag, syncedAt: new Date().toISOString(), posts };
+    const next = { format: FORMAT, repo: this.repo, branch: this.branch, commit, etag: head.etag, syncedAt: new Date().toISOString(), posts };
     await this.#write('state.json', JSON.stringify(next));
     this.state = next;
     for (const name of stored) if (!wanted.has(name)) await unlink(path.join(this.directory, 'assets', name)).catch(() => {});

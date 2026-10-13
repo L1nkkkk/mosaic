@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, rm, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,6 +111,15 @@ test('sync copies posts and their images, and only fetches what changed', async 
   assert.deepEqual(restarted.list().posts.map(post => post.slug), ['second', 'first']);
   hub.fail = false;
   assert.deepEqual((await restarted.sync()).posts.map(post => post.slug), ['new', 'second', 'first']);
+  // A copy written by an older version is still served, then read again in full although the repository has not moved.
+  const file = path.join(directory, 'blog', 'state.json'), old = JSON.parse(await readFile(file, 'utf8'));
+  await writeFile(file, JSON.stringify({ ...old, format: 1, posts: old.posts.filter(post => post.slug !== 'new') }));
+  const upgraded = new Blog(directory, { repo: 'me/blog', fetcher: hub.fetch });
+  await upgraded.initialize();
+  assert.deepEqual(upgraded.list().posts.map(post => post.slug), ['second', 'first']);
+  hub.calls.length = 0;
+  assert.deepEqual((await upgraded.sync()).posts.map(post => post.slug), ['new', 'second', 'first']);
+  assert.equal(hub.calls.filter(call => call.startsWith('git/blobs/')).length, 3);
   // A copy of another repository is not reused.
   const other = new Blog(directory, { repo: 'me/other', fetcher: hub.fetch });
   await other.initialize();
