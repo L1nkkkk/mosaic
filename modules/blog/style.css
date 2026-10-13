@@ -82,3 +82,12 @@
 .post-missing .post-back { color:var(--blog-mark); text-shadow:none; }
 @media (max-width:560px) { .post-nav { grid-template-columns:1fr; }.post-near[data-side="older"] { text-align:left; }.post-body { font-size:16px; } }
 @media (prefers-reduced-motion:reduce) { .blog-list a::before,.post-back span,.post-near { transition:none; }.post-progress { display:none; } }
+
+/* A post that is a page of its own: a narrow bar, then the whole screen for the page. */
+.view-public .post-shell.post-wide.mosaic-main { max-width:none; height:100vh; height:100dvh; min-height:0; padding:0; }
+.post-wide .post-bar { gap:16px; padding:10px 20px; }
+.post-wide .post-back { flex:none; }
+.post-bar-title { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; text-align:center; font:700 15px/1.4 var(--blog-serif); color:var(--ink); text-shadow:var(--on-wallpaper); }
+.post-wide .post-page { display:flex; min-height:0; }
+.post-frame { flex:1; width:100%; border:0; background:#fff; }
+@media (max-width:560px) { .post-wide .post-bar { padding:8px 14px; }.post-bar-title { text-align:left; } }

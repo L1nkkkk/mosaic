@@ -542,3 +542,9 @@ imageElement(img, data.cover, data.title);
 - 核心为它做了三处改动：`/post/…` 返回应用页面、`web/app.js` 里的 `showPost()`，以及 `api/blog` 这组接口（见 [HTTP 参考](HTTP-API.md)）。
 
 检查：`npm test`（`test/blog.test.js`，包括用假的 GitHub 接口跑完整同步）。
+
+### 整页 HTML 文章
+
+`posts/*.html` 由 `parsePage()` 读取 `<title>` 和 `<meta>` 得到文章信息，原文加上一小段让外部链接在新标签页打开的脚本后，存到 `DATA_DIR/blog/pages/<blob sha>.html`。列表项带 `kind: 'page'`，单篇响应用 `page`（一个 `api/blog/page/…` 地址）代替 `html`，`reader.js` 据此改用 iframe。
+
+隔离有两层，缺一不可：iframe 的 `sandbox` 属性不含 `allow-same-origin`；响应自己的内容安全策略也带 `sandbox` 指令，所以即使有人直接打开这个地址，页面仍然运行在空白来源里。这个响应不使用全站的策略，也不带 `X-Frame-Options`，改用 `frame-ancestors 'self'`；全站策略的 `frame-src` 相应增加了 `'self'`。检查：`node test/browser/blog.mjs` 让页面从内部报告它能访问到什么。

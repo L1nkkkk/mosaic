@@ -54,7 +54,7 @@ export function mount(context) {
       const date = document.createElement('time'), title = document.createElement('strong'), summary = document.createElement('p'), foot = document.createElement('span');
       date.dateTime = post.date; date.textContent = post.date.replaceAll('-', '.') || '未注明日期';
       title.textContent = post.title; summary.textContent = post.summary; summary.hidden = !post.summary;
-      foot.className = 'blog-foot'; foot.textContent = [...post.tags.map(tag => `#${tag}`), `${post.minutes} 分钟`].join('  ');
+      foot.className = 'blog-foot'; foot.textContent = [...post.tags.map(tag => `#${tag}`), ...(post.kind === 'page' ? ['可交互'] : []), `${post.minutes} 分钟`].join('  ');
       link.append(date, title, summary, foot); item.append(link);
       return item;
     }));

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { renderMarkdown, plainText } from '../server/markdown.js';
-import { Blog, parsePost, slugOf } from '../server/blog.js';
+import { Blog, parsePost, parsePage, slugOf } from '../server/blog.js';
 import { createApp } from '../server/app.js';
 import { passwordHash } from '../server/auth.js';
 
@@ -156,4 +156,41 @@ test('posts are served to visitors only while a blog module is published', async
   plain = await createApp({ ...config, dataDirectory: await temporary(t, () => plain.visitors.close()) });
   assert.deepEqual(plain.blog.list(true), { configured: false, syncedAt: null, posts: [], status: { repo: '', branch: 'main', commit: null, checkedAt: null, error: null } });
   await assert.rejects(plain.blog.sync(), { status: 400 });
+});
+
+test('a post can be a whole HTML page, shown in a frame that shares nothing with the site', async t => {
+  const source = '<!doctype html><html><head><title>帧循环 &amp; 同步</title>\n<meta name="tags" content="vulkan, 课件">\n<meta name=description content="从一帧说起。">\n<style>p{color:red}</style></head><body><p>正文 body</p><script>document.cookie</script><a href="https://example.com">外</a></body></html>';
+  const page = parsePage(source, 'posts/2026-10-13-Frame_Loop.html');
+  assert.deepEqual({ ...page, page: undefined }, { title: '帧循环 & 同步', date: '2026-10-13', tags: ['vulkan', '课件'], summary: '从一帧说起。', draft: false, minutes: 1, page: undefined });
+  assert.match(page.page, /<style>p\{color:red\}<\/style><script>addEventListener\("click"[^<]+<\/script><\/head>/);
+  assert.equal(parsePage('<meta name="draft" content="true"><p>x</p>', 'posts/a.html').draft, true);
+  assert.equal(slugOf('posts/2026-10-13-Frame_Loop.html'), 'frame-loop');
+
+  const hub = github({ 'posts/2026-10-13-Frame_Loop.html': source, 'posts/2026-10-12-note.md': '# 笔记', 'posts/2026-10-11-hidden.html': '<meta name="draft" content="yes">' });
+  let app;
+  const directory = await temporary(t, () => { app.server.closeAllConnections(); return new Promise(resolve => app.server.close(resolve)); }), origin = 'https://mosaic.test';
+  app = await createApp({ root, dataDirectory: directory, statusFile: path.join(directory, 'status.json'), basePath: '/mosaic', publicOrigin: origin, passwordHash: await passwordHash('test-only-editor-password'), sessionSecret: 'test-session-secret-at-least-32-characters', version: 'test', commit: 'test', blogRepo: 'me/blog', blogFetch: hub.fetch });
+  app.server.listen(0, '127.0.0.1'); await once(app.server, 'listening');
+  const address = `http://127.0.0.1:${app.server.address().port}/mosaic`;
+  await app.blog.sync();
+  const listed = await (await fetch(`${address}/api/blog`)).json();
+  assert.deepEqual(listed.posts.map(post => [post.slug, post.kind]), [['frame-loop', 'page'], ['note', undefined]]);
+  const post = await (await fetch(`${address}/api/blog/post?slug=frame-loop`)).json();
+  assert.deepEqual([post.page, post.html, post.older], ['api/blog/page/frame-loop', undefined, { slug: 'note', title: '笔记' }]);
+  const served = await fetch(`${address}/api/blog/page/frame-loop`);
+  assert.deepEqual([served.status, served.headers.get('content-type'), served.headers.get('x-frame-options')], [200, 'text/html; charset=utf-8', null]);
+  const policy = served.headers.get('content-security-policy');
+  assert.match(policy, /^sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; default-src 'none'; script-src 'unsafe-inline';/);
+  assert.match(policy, /frame-ancestors 'self'$/);
+  assert.doesNotMatch(policy, /allow-same-origin|connect-src/);
+  assert.equal(await served.text(), page.page);
+  for (const name of ['note', 'hidden', 'nothing', '%E0%A4%A']) assert.equal((await fetch(`${address}/api/blog/page/${name}`)).status, 404);
+  assert.deepEqual(await readdir(path.join(directory, 'blog', 'pages')), [`${sha(source)}.html`]);
+  // An unchanged page is not downloaded again; a removed one is deleted here too.
+  hub.files['posts/2026-10-12-note.md'] = '# 笔记改'; hub.calls.length = 0;
+  await app.blog.sync();
+  assert.equal(hub.calls.some(call => call === `git/blobs/${sha(source)}`), false);
+  delete hub.files['posts/2026-10-13-Frame_Loop.html'];
+  await app.blog.sync();
+  assert.deepEqual([await readdir(path.join(directory, 'blog', 'pages')), (await fetch(`${address}/api/blog/page/frame-loop`)).status], [[], 404]);
 });

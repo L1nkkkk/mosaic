@@ -584,3 +584,5 @@ state = await requestJSON('admin/publish', 'POST', {
 | `GET /post/<名称>` | 返回应用页面，由浏览器读取上面的接口显示文章。 |
 
 前三个接口对主人始终可用；匿名访问只有在公开页已发布博客模块时可用，否则返回 404。草稿（`draft: true`）不会出现在任何响应里。`html` 由服务端渲染，只包含固定的一组标签。
+
+整页 HTML 文章（0.22）：列表项多一个 `kind: "page"`；`GET /api/blog/post` 对这类文章返回 `page`（相对地址 `api/blog/page/<名称>`）而不是 `html`。`GET /api/blog/page/<名称>` 返回页面本身，可见范围与其他博客接口相同。它带有独立的内容安全策略：`sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox`、`default-src 'none'`、只允许内联脚本、内联与 HTTPS 样式、HTTPS 字体和图片，以及 `frame-ancestors 'self'`；没有 `connect-src`，页面不能发起请求。
