@@ -532,6 +532,16 @@ imageElement(img, data.cover, data.title);
 
 检查：`npm test`（`test/dca.test.js` 与 `test/app.test.js` 里的接口测试）。
 
+## 学习计划模块
+
+`study` 是仅私人可见的生命周期模块。内容是标题、最多 60 个主题 `{ id, name, level, star, note, gap }` 和最多 30 条资料 `{ id, title, note, url, done }`；`level` 是 0～4 的整数，对应 `plan.js` 的 `LEVELS`。
+
+- `modules/study/plan.js` 同时被定义、客户端和测试导入，不能访问 DOM。`parsePlan()` 把粘贴的文字拆成主题和资料：以 `|` 分隔或含制表符的行是表格行，表格的第一行在后面跟着分隔线、或第二列没有状态标记时视为表头；状态只认标记（✅ ⚠️ ❌ 🎯、以“部分”“AI”“能讲透”开头、单独的破折号），所以表头里的“你自己实现过”不会被当成进度。编号或圆点开头的行是资料，`**粗体**` 或冒号前的部分是名称。`mergePlan()` 按名称合并，已有条目保留进度。
+- 导入只在编辑面板里发生，结果仍要保存草稿；私人页上的点击（刻度、星标、资料勾选）用 `context.save()` 直接写草稿，保存途中先按请求的内容显示。
+- 「→ 待办」通过 `modules/handoff.js` 的 `todoAvailable()` / `addTodo(text)` 交给同页可写的待办模块，待办用 `receiveTodos(add, signal)` 接收，`add` 返回 false（例如正在保存）时调用方会得到失败。待办可能晚于本模块挂载，所以鼠标进入或焦点进入卡片时会重新确认。
+
+检查：`npm test`（`test/study.test.js`）与 `node test/browser/study.mjs`。
+
 ## 博客模块
 
 `blog` 是生命周期模块，内容字段只有标题、显示篇数（1–30）和可选的标签筛选；文章本身不存在页面草稿里。`load()` 读取 `blog`，列表只在要显示的内容变化时重建。

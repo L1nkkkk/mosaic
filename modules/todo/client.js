@@ -1,6 +1,7 @@
 import { field, fields } from '../../web/ui.js';
 import { validate } from './definition.js';
 import { today, isDone, doneToday, settle, toggle, reorder, dueLabel } from './items.js';
+import { receiveTodos } from '../handoff.js';
 export { validate } from './definition.js';
 export function edit({ data, change }) { return fields(field('标题', data.title, title => change({ title }), { maxLength: 100 })); }
 const button = (className, label) => { const element = document.createElement('button'); element.type = 'button'; element.className = className; element.textContent = label; return element; };
@@ -141,6 +142,12 @@ export function mount(context) {
     event.preventDefault(); const value = input.value.trim();
     if (value) persist({ ...data, items: [...current(), { id: crypto.randomUUID(), text: value, done: false, ...(draft.daily ? { daily: true } : draft.due ? { due: draft.due } : {}) }] }, true);
   }, { signal: context.signal });
+  // Other modules on the page can hand over a task, such as what a study topic still needs.
+  receiveTodos(value => {
+    if (!context.writable || saving || !data || data.items.length >= 100) return false;
+    persist({ ...data, items: [...current(), { id: crypto.randomUUID(), text: value, done: false }] });
+    return true;
+  }, context.signal);
   draftDue.addEventListener('click', () => pickDate(draftPicker), { signal: context.signal });
   draftPicker.addEventListener('change', () => { draft.due = draftPicker.value; render(); }, { signal: context.signal });
   draftRepeat.addEventListener('click', () => { draft = { due: '', daily: !draft.daily }; render(); }, { signal: context.signal });
